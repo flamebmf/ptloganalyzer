@@ -1,0 +1,75 @@
+<div class="header-block">
+  <h1><span data-i18n="settings">Настройки</span></h1>
+</div>
+
+<div class="chart-row">
+  <div class="chart-card half">
+    <div class="card-title" style="margin-bottom:16px"><i class="bi bi-info-circle"></i> <span data-i18n="settings">Настройки системы</span></div>
+    <div class="settings-form" id="appInfo"></div>
+  </div>
+  <div class="chart-card half">
+    <div class="card-title" style="margin-bottom:16px"><i class="bi bi-hdd-stack"></i> <span data-i18n="devices">Устройства</span></div>
+    <div id="deviceList"></div>
+  </div>
+</div>
+
+<div class="chart-card" style="margin-top:14px">
+  <div class="card-title" style="margin-bottom:16px"><i class="bi bi-stars"></i> <span data-i18n="ai_provider">AI провайдер</span></div>
+  <div class="settings-form" id="aiInfo"></div>
+</div>
+
+<script>
+async function loadSettings() {
+  try {
+    var settings = await apiGet('/api/settings');
+    document.getElementById('appInfo').innerHTML =
+      '<label>App</label>'
+      + '<input type="text" value="' + settings.app.name + ' v' + settings.app.version + '" readonly style="width:100%;margin-bottom:16px">'
+      + '<label>Collector</label>'
+      + '<input type="text" value="Port ' + settings.collector.port + ' | ' + (settings.collector.enabled ? 'Enabled' : 'Disabled') + '" readonly style="width:100%;margin-bottom:16px">'
+      + '<label>Language</label>'
+      + '<select id="langSelect" onchange="changeLang()" style="width:100%;margin-bottom:16px">'
+      + '<option value="ru" ' + (settings.web.language === 'ru' ? 'selected' : '') + '>Русский</option>'
+      + '<option value="en" ' + (settings.web.language === 'en' ? 'selected' : '') + '>English</option>'
+      + '</select>'
+      + '<label>Version</label>'
+      + '<input type="text" value="' + settings.app.version + '" readonly style="width:100%">';
+
+    document.getElementById('aiInfo').innerHTML =
+      '<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">'
+      + '<span class="badge ' + (settings.ai.enabled ? 'badge-ok' : 'badge-warn') + '">' + (settings.ai.enabled ? 'Enabled' : 'Disabled') + '</span>'
+      + '<span>Provider: <strong>' + settings.ai.provider + '</strong></span>'
+      + '</div>'
+      + '<label>Summarization interval</label>'
+      + '<input type="text" value="' + settings.ai.summarization_interval + ' minutes" readonly style="width:100%;margin-bottom:12px">'
+      + '<label>Anomaly detection interval</label>'
+      + '<input type="text" value="' + settings.ai.anomaly_interval + ' minutes" readonly>';
+  } catch(err) { showToast('Error: '+err, 'error'); }
+}
+
+async function loadDevices() {
+  try {
+    var devices = await apiGet('/api/devices');
+    var el = document.getElementById('deviceList');
+    el.innerHTML = devices.map(function(d) {
+      return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04)">'
+        + '<div><strong>' + d.hostname + '</strong>' + (d.ip ? ' <span style="color:var(--pt-muted)">(' + d.ip + ')</span>' : '')
+        + (d.name ? '<br><small style="color:var(--pt-muted)">' + d.name + '</small>' : '')
+        + '</div>'
+        + '<span class="badge ' + (d.enabled ? 'badge-ok' : 'badge-warn') + '">' + (d.enabled ? 'ON' : 'OFF') + '</span>'
+        + '</div>';
+    }).join('');
+    if (devices.length === 0) {
+      el.innerHTML = '<div class="empty-state"><p>Нет устройств. Добавьте через config.yaml.</p></div>';
+    }
+  } catch(err) {}
+}
+
+function changeLang() {
+  var lang = document.getElementById('langSelect').value;
+  showToast('Language changed to ' + lang, 'success');
+}
+
+loadSettings();
+loadDevices();
+</script>

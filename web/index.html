@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#04070d">
+<title>ptloganalyzer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<link rel="stylesheet" href="css/pt-dark.css?v=__APP_VERSION__">
+<link rel="stylesheet" href="css/ptlog.css?v=__APP_VERSION__">
+</head>
+<body>
+
+<div class="bg-bars" id="bgBars"></div>
+
+<div class="navbar"><div class="nav-inner">
+  <a class="nav-brand" href="/">
+    <svg class="nav-logo" viewBox="0 0 155 205" xmlns="http://www.w3.org/2000/svg">
+      <rect x="7" y="7" width="141" height="191" rx="15" ry="15" fill="none" stroke="url(#navGrad)" stroke-width="4"/>
+      <text x="50%" y="50%" text-anchor="middle" fill="url(#navGrad)" font-size="140" font-weight="900" dy=".3em">P</text>
+      <text x="65%" y="70%" text-anchor="middle" fill="#7b61ff" font-size="75" font-weight="bold" dy=".3em">t</text>
+      <defs><linearGradient id="navGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#00d4ff"/><stop offset="100%" stop-color="#7b61ff"/></linearGradient></defs>
+    </svg>
+    <span class="nav-text-w">Log</span><span class="nav-text-g">Analyzer</span>
+  </a>
+  <ul class="nav-links">
+    <li><a href="/" class="active"><i class="bi bi-grid"></i> <span data-i18n="dashboard">Dashboard</span></a></li>
+    <li><a href="#devices.html" onclick="event.preventDefault();window.location.hash='devices.html'"><i class="bi bi-hdd-stack"></i> <span data-i18n="devices">Устройства</span></a></li>
+    <li><a href="#logs.html" onclick="event.preventDefault();window.location.hash='logs.html'"><i class="bi bi-list-ul"></i> <span data-i18n="logs">Логи</span></a></li>
+    <li><a href="#anomalies.html" onclick="event.preventDefault();window.location.hash='anomalies.html'"><i class="bi bi-exclamation-triangle"></i> <span data-i18n="anomalies">Аномалии</span> <span class="badge badge-err" id="anomalyBadge" style="display:none">0</span></a></li>
+    <li><a href="#settings.html" onclick="event.preventDefault();window.location.hash='settings.html'"><i class="bi bi-gear"></i> <span data-i18n="settings">Настройки</span></a></li>
+    <li><button id="toggleBg" class="pt-bg-btn" onclick="toggleBgBars()">BG ON</button></li>
+  </ul>
+</div></div>
+
+<div class="container" id="mainContent">
+
+<div class="header-block">
+  <h1>ДашБорд</h1>
+  <div class="header-stats" id="headerStats">
+    <div class="stat-badge"><span data-i18n="total_devices">Устройств</span> <span class="stat-val" id="statDevices">0</span></div>
+    <div class="stat-badge"><span data-i18n="active_devices">Активны</span> <span class="stat-val" id="statActive">0</span></div>
+    <div class="stat-badge"><span data-i18n="logs_per_hour">Логов/ч</span> <span class="stat-val" id="statLogs">0</span></div>
+    <div class="stat-badge"><span data-i18n="anomalies_24h">Аномалии</span> <span class="stat-val" id="statAnomalies">0</span></div>
+  </div>
+</div>
+
+<div class="chart-row">
+  <div class="chart-card full" id="dashVolumeChart" style="height:220px"></div>
+</div>
+<div class="chart-row">
+  <div class="chart-card half" id="dashSeverityChart" style="height:220px"></div>
+  <div class="chart-card half" id="dashStatsPanel" style="height:220px;overflow-y:auto">
+    <div class="card-title" style="margin-bottom:6px"><i class="bi bi-bar-chart"></i> <span>Severity</span></div>
+    <div id="dashSeverityList" style="font-size:.85rem;margin-bottom:10px"></div>
+    <div class="card-title" style="margin-bottom:6px"><i class="bi bi-app"></i> <span>Top applications</span></div>
+    <div id="dashTopApps" style="font-size:.85rem"></div>
+  </div>
+</div>
+<div class="chart-row">
+  <div class="chart-card half" id="dashDeviceStats" style="height:280px;overflow-y:auto">
+    <div class="card-title" style="margin-bottom:6px"><i class="bi bi-hdd-stack"></i> <span>Logs per device</span></div>
+    <div id="dashPerDevice" style="font-size:.85rem"></div>
+  </div>
+  <div class="chart-card half" id="dashErrorPanel" style="height:280px;overflow-y:auto">
+    <div class="card-title" style="margin-bottom:6px"><i class="bi bi-exclamation-triangle"></i> <span>Top 5 Errors</span></div>
+    <div id="dashTopErrors" style="font-size:.85rem"></div>
+  </div>
+</div>
+
+
+</div>
+
+<footer>ptloganalyzer &copy; <span id="footerYear"></span></footer>
+<script>document.getElementById('footerYear').textContent = new Date().getFullYear()</script>
+
+<script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+<script src="js/app.js?v=__APP_VERSION__"></script>
+<script src="js/bg-bars.js?v=__APP_VERSION__"></script>
+<script src="js/charts.js?v=__APP_VERSION__"></script>
+<script src="js/sse-client.js?v=__APP_VERSION__"></script>
+<div id="sseEnabled" style="display:none"></div>
+
+<script>
+async function loadStats() {
+  try {
+    const stats = await apiGet('/api/settings');
+    // Use simple counts from devices list for now
+    const devices = await apiGet('/api/devices');
+    document.getElementById('statDevices').textContent = devices.length;
+    let active = 0, total = 0;
+    for (const d of devices) {
+      const s = await apiGet(`/api/devices/${d.id}/stats`);
+      total += s.total || 0;
+      if (s.last_seen) active++;
+    }
+    document.getElementById('statActive').textContent = active;
+    document.getElementById('statLogs').textContent = total;
+    const anomalies = await apiGet('/api/anomalies?limit=1');
+    document.getElementById('statAnomalies').textContent = anomalies.items ? anomalies.items.length : 0;
+  } catch(err) {}
+}
+
+async function loadDashboardCharts() {
+  try {
+    const data = await apiGet('/api/dashboard/history');
+    const volData = data.volume.map(d => ({ hour: d.hour, count: d.count }));
+    if (document.getElementById('dashVolumeChart').children.length < 2) {
+      createLogVolumeChart('dashVolumeChart', volData);
+    }
+    const sevData = data.severity.map(d => ({ severity: d.severity, count: d.count }));
+    if (document.getElementById('dashSeverityChart').children.length < 2) {
+      createSeverityChart('dashSeverityChart', sevData);
+    }
+    const labels = ['Emerg','Alert','Crit','Err','Warning','Notice','Info','Debug'];
+    const colors = ['#ff1744','#ff5252','#ffd740','#00e676','#00d4ff','#7a8294'];
+    document.getElementById('dashSeverityList').innerHTML = data.severity.map(d => `
+      <div style="display:flex;justify-content:space-between;padding:3px 0">
+        <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${colors[d.severity]||'#7a8294'};margin-right:8px"></span>${labels[d.severity]||d.severity}</span>
+        <span class="stat-val">${d.count}</span>
+      </div>
+    `).join('');
+    document.getElementById('dashTopErrors').innerHTML = data.top_errors.length
+      ? data.top_errors.map(d => `
+        <div style="display:flex;justify-content:space-between;padding:3px 0">
+          <span><i class="bi bi-dot" style="color:#ff5252"></i>${d.hostname}</span>
+          <span class="stat-val" style="color:#ff5252">${d.errors}</span>
+        </div>
+      `).join('')
+      : '<span style="color:var(--pt-muted)">No errors in 24h</span>';
+    document.getElementById('dashPerDevice').innerHTML = data.per_device.map(d => {
+      const pct = data.total ? Math.round(d.count / data.total * 100) : 0;
+      return `
+        <div style="margin-bottom:6px">
+          <div style="display:flex;justify-content:space-between;font-size:.8rem">
+            <span>${d.hostname}</span>
+            <span class="stat-val">${d.count} <span style="color:var(--pt-muted);font-size:.75rem">${pct}%</span></span>
+          </div>
+          <div style="height:4px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden">
+            <div style="height:100%;width:${pct}%;background:var(--pt-accent);border-radius:2px"></div>
+          </div>
+        </div>
+      `;
+    }).join('');
+    document.getElementById('dashTopApps').innerHTML = data.top_apps.map(d => `
+      <div style="display:flex;justify-content:space-between;padding:3px 0;font-size:.85rem">
+        <span>${d.app_name}</span>
+        <span class="stat-val">${d.count}</span>
+      </div>
+    `).join('') || '<span style="color:var(--pt-muted)">No application data</span>';
+  } catch(err) {
+    showToast('Dashboard charts: '+err, 'error');
+  }
+}
+
+window.pageLoaded = function() {
+  loadStats();
+};
+
+loadStats();
+loadDashboardCharts();
+</script>
+</body>
+</html>

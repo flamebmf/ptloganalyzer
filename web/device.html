@@ -1,0 +1,133 @@
+<div class="header-block">
+  <h1 id="deviceTitle">Устройство</h1>
+  <div class="header-stats" id="deviceStats"></div>
+</div>
+
+<div class="chart-row">
+  <div class="chart-card full" id="volumeChart" style="height:220px"></div>
+</div>
+
+<div class="chart-row">
+  <div class="chart-card half" id="severityChart" style="height:220px"></div>
+  <div class="chart-card half" id="summaryCard" style="height:220px;overflow-y:auto">
+    <div class="card-title" style="margin-bottom:8px"><i class="bi bi-stars"></i> <span data-i18n="ai_summary">AI сводка</span></div>
+    <div id="summaryContent"><span style="color:var(--pt-muted)">Загрузка...</span></div>
+  </div>
+</div>
+
+<div class="chart-card" style="margin-top:14px">
+  <div class="card-header">
+    <div class="card-title"><span data-i18n="logs">Логи</span></div>
+    <button class="btn btn-outline btn-sm" onclick="loadDeviceLogs()"><i class="bi bi-arrow-clockwise"></i></button>
+  </div>
+  <div class="search-bar">
+    <input type="text" id="logSearch" placeholder="Поиск..." onkeyup="if(event.key==='Enter')loadDeviceLogs()">
+    <select id="sevFilter">
+      <option value="">Severity</option>
+      <option value="0">EMERG</option><option value="1">ALERT</option>
+      <option value="2">CRIT</option><option value="3">ERR</option>
+      <option value="4">WARNING</option><option value="5">NOTICE</option>
+      <option value="6">INFO</option><option value="7">DEBUG</option>
+    </select>
+    <button class="btn btn-primary btn-sm" onclick="loadDeviceLogs()"><i class="bi bi-search"></i></button>
+  </div>
+  <div id="logList"></div>
+</div>
+
+<script>
+var deviceId = null;
+var volumeChart = null;
+var sevChart = null;
+
+async function loadDevice() {
+  var main = document.getElementById('mainContent');
+  var pageUrl = main ? main.dataset.page : window.location.hash.replace(/^#/, '');
+  var qs = pageUrl && pageUrl.includes('?') ? pageUrl.split('?')[1] : location.search.substring(1);
+  var params = new URLSearchParams(qs);
+  deviceId = parseInt(params.get('id'));
+  if (!deviceId) return;
+
+  try {
+    var dev = await apiGet('/api/devices/' + deviceId);
+    document.getElementById('deviceTitle').textContent = dev.hostname || 'Device #' + deviceId;
+    var stats = await apiGet('/api/devices/' + deviceId + '/stats');
+    var lastSeen = stats.last_seen ? formatTime(stats.last_seen) : '-';
+    document.getElementById('deviceStats').innerHTML =
+      '<div class="stat-badge">Logs <span class="stat-val">' + (stats.total||0) + '</span></div>'
+      + '<div class="stat-badge">Last <span class="stat-val">' + lastSeen + '</span></div>'
+      + '<div class="stat-badge">Errors <span class="stat-val">' + (stats.errors||0) + '</span></div>';
+
+    loadCharts();
+    loadDeviceLogs();
+    loadSummary();
+  } catch(err) { showToast('Error: '+err, 'error'); }
+}
+
+async function loadCharts() {
+  var volumeData = await apiGet('/api/logs?device_id=' + deviceId + '&limit=1000');
+  var hourMap = {};
+  volumeData.items.forEach(function(l) {
+    var d = new Date(l.ts);
+    var h = new Date(d.getFullYear(),d.getMonth(),d.getDate(),d.getHours()).toISOString();
+    hourMap[h] = (hourMap[h]||0) + 1;
+  });
+  var volData = Object.entries(hourMap).map(function(entry) { return {hour: entry[0], count: entry[1]}; });
+  volData.sort(function(a,b) { return a.hour.localeCompare(b.hour); });
+
+  if (volumeChart) volumeChart.destroy();
+  volumeChart = createLogVolumeChart('volumeChart', volData);
+
+  var sevMap = {};
+  volumeData.items.forEach(function(l) { sevMap[l.severity] = (sevMap[l.severity]||0) + 1; });
+  var sevData = Object.entries(sevMap).map(function(entry) { return {severity: parseInt(entry[0]), count: entry[1]}; });
+
+  if (sevChart) sevChart.destroy();
+  sevChart = createSeverityChart('severityChart', sevData);
+}
+
+async function loadDeviceLogs() {
+  if (!deviceId) return;
+  var query = document.getElementById('logSearch').value;
+  var sev = document.getElementById('sevFilter').value;
+  var url = '/api/logs?device_id=' + deviceId + '&limit=50';
+  if (query) url += '&query=' + encodeURIComponent(query);
+  if (sev) url += '&severity=' + sev;
+
+  try {
+    var data = await apiGet(url);
+    var list = document.getElementById('logList');
+    if (data.items.length === 0) {
+      list.innerHTML = '<div class="empty-state"><p>Нет логов</p></div>';
+      return;
+    }
+    list.innerHTML = data.items.map(function(l) {
+      return '<div class="log-line">'
+        + '<span class="ts">' + formatTime(l.ts) + '</span>'
+        + '<span class="sev ' + severityClass(l.severity) + '">' + severityBadge(l.severity) + '</span>'
+        + '<span class="msg">' + l.message + '</span>'
+        + '</div>';
+    }).join('');
+  } catch(err) { showToast('Error: '+err, 'error'); }
+}
+
+async function loadSummary() {
+  if (!deviceId) return;
+  try {
+    var data = await apiGet('/api/summaries?device_id=' + deviceId);
+    var el = document.getElementById('summaryContent');
+    if (data.length === 0) {
+      el.innerHTML = '<span style="color:var(--pt-muted)">Нет сводок. AI суммаризация выполняется по расписанию.</span>';
+      return;
+    }
+    el.innerHTML = data.slice(0,3).map(function(s) {
+      return '<div class="summary-block">'
+        + '<small style="color:var(--pt-muted)">' + formatTime(s.period_start) + ' — ' + formatTime(s.period_end) + '</small>'
+        + '<div style="margin-top:6px;font-size:.9rem">' + s.summary + '</div>'
+        + '</div>';
+    }).join('');
+  } catch(err) {}
+}
+
+window.pageLoaded = loadDevice;
+loadDevice();
+</script>

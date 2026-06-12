@@ -1,0 +1,72 @@
+<div class="header-block">
+  <h1><span data-i18n="anomalies">Аномалии</span></h1>
+  <div class="header-stats">
+    <div class="stat-badge">Critical <span class="stat-val" id="critCount">0</span></div>
+    <div class="stat-badge">Warning <span class="stat-val" id="warnCount">0</span></div>
+  </div>
+</div>
+
+<div class="search-bar">
+  <select id="deviceFilter"><option value="">All devices</option></select>
+  <select id="sevFilter">
+    <option value="">Severity</option>
+    <option value="critical">Critical</option>
+    <option value="warning">Warning</option>
+    <option value="info">Info</option>
+  </select>
+  <button class="btn btn-primary btn-sm" onclick="loadAnomalies()"><i class="bi bi-arrow-clockwise"></i></button>
+</div>
+
+<div id="anomalyList"></div>
+
+<script>
+async function loadAnomalies() {
+  try {
+    var deviceId = document.getElementById('deviceFilter').value;
+    var sev = document.getElementById('sevFilter').value;
+    var url = '/api/anomalies?limit=100';
+    if (deviceId) url += '&device_id=' + deviceId;
+
+    var data = await apiGet(url);
+    var list = document.getElementById('anomalyList');
+    if (data.items.length === 0) {
+      list.innerHTML = '<div class="empty-state"><div class="icon"><i class="bi bi-check-circle"></i></div><p>Аномалий не обнаружено</p></div>';
+      return;
+    }
+
+    var crit = 0, warn = 0;
+    list.innerHTML = data.items.map(function(a) {
+      if (a.severity === 'critical') crit++;
+      else if (a.severity === 'warning') warn++;
+      var icon = a.severity === 'critical' ? 'bi-exclamation-triangle-fill' :
+                 a.severity === 'warning' ? 'bi-exclamation-circle-fill' : 'bi-info-circle-fill';
+      return '<div class="anomaly-item ' + a.severity + '">'
+        + '<div class="anomaly-icon"><i class="bi ' + icon + '"></i></div>'
+        + '<div style="flex:1">'
+        + '<div class="anomaly-title">' + a.title + '</div>'
+        + (a.description ? '<div class="anomaly-desc">' + a.description + '</div>' : '')
+        + '<div class="anomaly-time">' + formatTime(a.detected_at) + (a.hostname ? ' &middot; ' + a.hostname : '') + '</div>'
+        + '</div></div>';
+    }).join('');
+
+    document.getElementById('critCount').textContent = crit;
+    document.getElementById('warnCount').textContent = warn;
+  } catch(err) { showToast('Error: '+err, 'error'); }
+}
+
+async function initAnomalies() {
+  try {
+    var devices = await apiGet('/api/devices');
+    var sel = document.getElementById('deviceFilter');
+    devices.forEach(function(d) {
+      var opt = document.createElement('option');
+      opt.value = d.id;
+      opt.textContent = d.hostname;
+      sel.appendChild(opt);
+    });
+  } catch(err) {}
+  loadAnomalies();
+}
+
+initAnomalies();
+</script>

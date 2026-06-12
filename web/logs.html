@@ -1,0 +1,86 @@
+<div class="header-block">
+  <h1><span data-i18n="logs">Логи</span></h1>
+</div>
+
+<div class="search-bar">
+  <input type="text" id="query" placeholder="Поиск по тексту..." onkeyup="if(event.key==='Enter')searchLogs()">
+  <select id="deviceFilter"><option value="">All devices</option></select>
+  <select id="sevFilter">
+    <option value="">Severity</option>
+    <option value="0">EMERG</option><option value="1">ALERT</option>
+    <option value="2">CRIT</option><option value="3">ERR</option>
+    <option value="4">WARNING</option><option value="5">NOTICE</option>
+    <option value="6">INFO</option><option value="7">DEBUG</option>
+  </select>
+  <button class="btn btn-primary btn-sm" onclick="searchLogs()"><i class="bi bi-search"></i> <span data-i18n="search">Поиск</span></button>
+</div>
+
+<div class="card-dash">
+  <div id="logResults"></div>
+  <div class="pagination" id="pagination"></div>
+</div>
+
+<script>
+var _logCurrentPage = 0;
+var _logPageSize = 50;
+var _deviceMap = {};
+
+async function initPage() {
+  try {
+    var devices = await apiGet('/api/devices');
+    var sel = document.getElementById('deviceFilter');
+    devices.forEach(function(d) {
+      _deviceMap[d.id] = d.hostname;
+      var opt = document.createElement('option');
+      opt.value = d.id;
+      opt.textContent = d.hostname;
+      sel.appendChild(opt);
+    });
+  } catch(err) {}
+  searchLogs();
+}
+
+async function searchLogs(page) {
+  if (page !== undefined) _logCurrentPage = page;
+  var query = document.getElementById('query').value;
+  var deviceId = document.getElementById('deviceFilter').value;
+  var sev = document.getElementById('sevFilter').value;
+  var url = '/api/logs?limit=' + _logPageSize + '&offset=' + (_logCurrentPage * _logPageSize);
+  if (query) url += '&query=' + encodeURIComponent(query);
+  if (deviceId) url += '&device_id=' + deviceId;
+  if (sev) url += '&severity=' + sev;
+
+  try {
+    var data = await apiGet(url);
+    var el = document.getElementById('logResults');
+    if (data.items.length === 0) {
+      el.innerHTML = '<div class="empty-state"><div class="icon"><i class="bi bi-search"></i></div><p data-i18n="no_data">Нет результатов</p></div>';
+      document.getElementById('pagination').innerHTML = '';
+      return;
+    }
+
+    el.innerHTML = '<table><thead><tr>'
+      + '<th>Time</th><th>Host</th><th>Sev</th><th>App</th><th data-i18n="message">Сообщение</th>'
+      + '</tr></thead><tbody>'
+      + data.items.map(function(l) {
+        return '<tr onclick="location.href=\'#device.html?id=' + l.device_id + '\'" style="cursor:pointer">'
+          + '<td style="white-space:nowrap">' + formatTime(l.ts) + '</td>'
+          + '<td>' + (_deviceMap[l.device_id] || '#' + l.device_id) + '</td>'
+          + '<td>' + severityBadge(l.severity) + '</td>'
+          + '<td>' + (l.app_name || '-') + '</td>'
+          + '<td style="max-width:500px;overflow:hidden;text-overflow:ellipsis">' + l.message + '</td>'
+          + '</tr>';
+      }).join('')
+      + '</tbody></table>';
+
+    var pg = document.getElementById('pagination');
+    var pgHtml = '';
+    pgHtml += '<button onclick="searchLogs(' + (_logCurrentPage-1) + ')" ' + (_logCurrentPage===0 ? 'disabled' : '') + '><i class="bi bi-chevron-left"></i></button>';
+    pgHtml += '<button class="active">' + (_logCurrentPage+1) + '</button>';
+    pgHtml += '<button onclick="searchLogs(' + (_logCurrentPage+1) + ')"><i class="bi bi-chevron-right"></i></button>';
+    pg.innerHTML = pgHtml;
+  } catch(err) { showToast('Error: '+err, 'error'); }
+}
+
+initPage();
+</script>

@@ -1,0 +1,52 @@
+<div class="header-block">
+  <h1><span data-i18n="devices">Устройства</span></h1>
+  <div class="header-stats" id="deviceHeaderStats">
+    <div class="stat-badge"><span>Всего</span> <span class="stat-val" id="totalDevices">0</span></div>
+    <div class="stat-badge"><span>Активны</span> <span class="stat-val" id="activeDevices">0</span></div>
+  </div>
+</div>
+
+<div class="device-grid" id="deviceGrid">
+  <div class="empty-state" style="grid-column:1/-1">
+    <div class="icon"><i class="bi bi-hdd-stack"></i></div>
+    <p data-i18n="loading">Загрузка...</p>
+  </div>
+</div>
+
+<script>
+async function loadDevices() {
+  try {
+    var devices = await apiGet('/api/devices');
+    var grid = document.getElementById('deviceGrid');
+    var html = '';
+    var active = 0;
+
+    for (var d of devices) {
+      var stats = await apiGet(`/api/devices/${d.id}/stats`);
+      var lastSeen = stats.last_seen ? formatTime(stats.last_seen) : '-';
+      var status = stats.last_seen ? 'online' : 'offline';
+      if (stats.last_seen) active++;
+      html += '<div class="card-dash" onclick="loadPage(\'device.html?id=' + d.id + '\')" style="cursor:pointer">'
+        + '<div class="card-header">'
+        + '<div class="card-title">' + d.hostname + (d.ip ? ' <span style="color:var(--pt-muted);font-weight:400;font-size:.8rem">(' + d.ip + ')</span>' : '') + '</div>'
+        + '<span class="' + status + '"><i class="bi bi-circle-fill" style="font-size:.6rem"></i> ' + status + '</span>'
+        + '</div><div class="card-body">'
+        + (d.name ? '<div><span style="color:var(--pt-muted)">' + d.name + '</span></div>' : '')
+        + '<div class="card-stat"><span data-i18n="last_seen">Последний раз</span> <span>' + lastSeen + '</span></div>'
+        + '<div class="card-stat"><span>Logs / 24h</span> <span class="stat-val">' + (stats.total || 0) + '</span></div>'
+        + '<div class="card-stat"><span data-i18n="anomalies">Аномалии</span> <span>' + (stats.errors || 0) + '</span></div>'
+        + '</div></div>';
+    }
+    if (devices.length === 0) {
+      html = '<div class="empty-state" style="grid-column:1/-1"><div class="icon"><i class="bi bi-hdd-stack"></i></div><p>Нет устройств. Добавьте через настройки.</p></div>';
+    }
+    grid.innerHTML = html;
+    document.getElementById('totalDevices').textContent = devices.length;
+    document.getElementById('activeDevices').textContent = active;
+  } catch(err) {
+    showToast('Error loading devices: '+err, 'error');
+  }
+}
+
+loadDevices();
+</script>
