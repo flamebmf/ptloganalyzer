@@ -1,3 +1,5 @@
+# Copyright (c) 2026 PlurumTech.com
+# SPDX-License-Identifier: LicenseRef-Personal-Use-Only
 from app.ai.provider import AIProvider
 from app.ai.openai_provider import OpenAIProvider
 from app.ai.ollama_provider import OllamaProvider

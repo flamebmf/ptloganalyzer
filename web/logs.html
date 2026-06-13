@@ -1,29 +1,47 @@
+<!-- Copyright (c) 2026 PlurumTech.com -->
+<!-- SPDX-License-Identifier: LicenseRef-Personal-Use-Only -->
 <div class="header-block">
   <h1><span data-i18n="logs">Логи</span></h1>
 </div>
 
-<div class="search-bar">
-  <input type="text" id="query" placeholder="Поиск по тексту..." onkeyup="if(event.key==='Enter')searchLogs()">
-  <select id="deviceFilter"><option value="">All devices</option></select>
-  <select id="sevFilter">
-    <option value="">Severity</option>
-    <option value="0">EMERG</option><option value="1">ALERT</option>
-    <option value="2">CRIT</option><option value="3">ERR</option>
-    <option value="4">WARNING</option><option value="5">NOTICE</option>
-    <option value="6">INFO</option><option value="7">DEBUG</option>
-  </select>
-  <button class="btn btn-primary btn-sm" onclick="searchLogs()"><i class="bi bi-search"></i> <span data-i18n="search">Поиск</span></button>
-</div>
+<div class="chart-card">
+  <div class="search-bar">
+    <input type="text" id="query" placeholder="Поиск по тексту..." onkeyup="if(event.key==='Enter')searchLogs()">
+    <select id="deviceFilter"><option value="">All devices</option></select>
+    <select id="sevFilter">
+      <option value="">Severity</option>
+      <option value="0">EMERG</option><option value="1">ALERT</option>
+      <option value="2">CRIT</option><option value="3">ERR</option>
+      <option value="4">WARNING</option><option value="5">NOTICE</option>
+      <option value="6">INFO</option><option value="7">DEBUG</option>
+    </select>
+    <button class="btn btn-outline btn-sm" id="semanticToggle" onclick="toggleSemantic()" title="Семантический поиск"><i class="bi bi-stars"></i></button>
+    <button class="btn btn-primary btn-sm" onclick="searchLogs()"><i class="bi bi-search"></i> <span data-i18n="search">Поиск</span></button>
+  </div>
 
-<div class="card-dash">
-  <div id="logResults"></div>
+  <div id="logResults" style="max-height:calc(100vh - 320px);overflow-y:auto"></div>
   <div class="pagination" id="pagination"></div>
 </div>
 
 <script>
 var _logCurrentPage = 0;
-var _logPageSize = 50;
+var _logPageSize = 25;
+var _logTotal = 0;
 var _deviceMap = {};
+var _semanticMode = false;
+
+function toggleSemantic() {
+  _semanticMode = !_semanticMode;
+  var btn = document.getElementById('semanticToggle');
+  btn.classList.toggle('btn-outline');
+  btn.classList.toggle('btn-primary');
+  if (_semanticMode) {
+    document.getElementById('sevFilter').disabled = true;
+  } else {
+    document.getElementById('sevFilter').disabled = false;
+  }
+  searchLogs();
+}
 
 async function initPage() {
   try {
@@ -45,6 +63,36 @@ async function searchLogs(page) {
   var query = document.getElementById('query').value;
   var deviceId = document.getElementById('deviceFilter').value;
   var sev = document.getElementById('sevFilter').value;
+
+  if (_semanticMode) {
+    if (!query) { document.getElementById('logResults').innerHTML = '<div class="empty-state"><p>Введите текст для поиска</p></div>'; document.getElementById('pagination').innerHTML = ''; return; }
+    var url = '/api/logs/similar?q=' + encodeURIComponent(query) + '&limit=' + _logPageSize;
+    if (deviceId) url += '&device_id=' + deviceId;
+    try {
+      var data = await apiGet(url);
+      var el = document.getElementById('logResults');
+      if (data.items.length === 0) {
+        el.innerHTML = '<div class="empty-state"><div class="icon"><i class="bi bi-search"></i></div><p>Нет результатов</p></div>';
+        document.getElementById('pagination').innerHTML = '';
+        return;
+      }
+      el.innerHTML = '<table style="table-layout:auto;width:100%"><thead><tr>'
+        + '<th style="width:1%">Score</th><th style="white-space:nowrap;width:1%">Time</th><th data-i18n="message" style="width:100%">Сообщение</th>'
+        + '</tr></thead><tbody>'
+        + data.items.map(function(r) {
+          var score = r.score ? (r.score*100).toFixed(0) + '%' : '-';
+          return '<tr onclick="location.href=\'#device.html?id=' + r.device_id + '\'" style="cursor:pointer">'
+            + '<td style="color:var(--pt-accent);white-space:nowrap">' + score + '</td>'
+            + '<td style="white-space:nowrap">' + formatTime(r.ts) + '</td>'
+            + '<td style="overflow:hidden;text-overflow:ellipsis">' + (r.snippet || r.message) + '</td>'
+            + '</tr>';
+        }).join('')
+        + '</tbody></table>';
+      document.getElementById('pagination').innerHTML = '';
+    } catch(err) { showToast('Ошибка: '+err, 'error'); }
+    return;
+  }
+
   var url = '/api/logs?limit=' + _logPageSize + '&offset=' + (_logCurrentPage * _logPageSize);
   if (query) url += '&query=' + encodeURIComponent(query);
   if (deviceId) url += '&device_id=' + deviceId;
@@ -52,6 +100,7 @@ async function searchLogs(page) {
 
   try {
     var data = await apiGet(url);
+    _logTotal = data.total || data.items.length;
     var el = document.getElementById('logResults');
     if (data.items.length === 0) {
       el.innerHTML = '<div class="empty-state"><div class="icon"><i class="bi bi-search"></i></div><p data-i18n="no_data">Нет результатов</p></div>';
@@ -59,26 +108,30 @@ async function searchLogs(page) {
       return;
     }
 
-    el.innerHTML = '<table><thead><tr>'
-      + '<th>Time</th><th>Host</th><th>Sev</th><th>App</th><th data-i18n="message">Сообщение</th>'
+    el.innerHTML = '<table style="table-layout:auto;width:100%"><thead><tr>'
+      + '<th style="white-space:nowrap;width:1%">Time</th><th style="white-space:nowrap;width:1%">Host</th><th style="width:1%">Sev</th><th style="white-space:nowrap;width:1%">App</th><th data-i18n="message" style="width:100%">Сообщение</th>'
       + '</tr></thead><tbody>'
       + data.items.map(function(l) {
         return '<tr onclick="location.href=\'#device.html?id=' + l.device_id + '\'" style="cursor:pointer">'
           + '<td style="white-space:nowrap">' + formatTime(l.ts) + '</td>'
-          + '<td>' + (_deviceMap[l.device_id] || '#' + l.device_id) + '</td>'
+          + '<td style="white-space:nowrap">' + (_deviceMap[l.device_id] || '#' + l.device_id) + '</td>'
           + '<td>' + severityBadge(l.severity) + '</td>'
-          + '<td>' + (l.app_name || '-') + '</td>'
-          + '<td style="max-width:500px;overflow:hidden;text-overflow:ellipsis">' + l.message + '</td>'
+          + '<td style="white-space:nowrap">' + (l.app_name || '-') + '</td>'
+          + '<td style="overflow:hidden;text-overflow:ellipsis">' + l.message + '</td>'
           + '</tr>';
       }).join('')
       + '</tbody></table>';
 
+    var pages = Math.ceil(_logTotal / _logPageSize);
     var pg = document.getElementById('pagination');
-    var pgHtml = '';
-    pgHtml += '<button onclick="searchLogs(' + (_logCurrentPage-1) + ')" ' + (_logCurrentPage===0 ? 'disabled' : '') + '><i class="bi bi-chevron-left"></i></button>';
-    pgHtml += '<button class="active">' + (_logCurrentPage+1) + '</button>';
-    pgHtml += '<button onclick="searchLogs(' + (_logCurrentPage+1) + ')"><i class="bi bi-chevron-right"></i></button>';
-    pg.innerHTML = pgHtml;
+    var cur = _logCurrentPage;
+    var html = '';
+    if (cur > 0) html += '<button onclick="searchLogs(' + (cur-1) + ')"><i class="bi bi-chevron-left"></i></button>';
+    for (var p = Math.max(0,cur-2); p < Math.min(pages,cur+3); p++) {
+      html += '<button class="' + (p === cur ? 'active' : '') + '" onclick="searchLogs(' + p + ')">' + (p+1) + '</button>';
+    }
+    if (cur < pages-1) html += '<button onclick="searchLogs(' + (cur+1) + ')"><i class="bi bi-chevron-right"></i></button>';
+    pg.innerHTML = html;
   } catch(err) { showToast('Error: '+err, 'error'); }
 }
 

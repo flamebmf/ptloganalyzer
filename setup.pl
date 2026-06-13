@@ -1,4 +1,6 @@
 #!/usr/bin/env perl
+# Copyright (c) 2026 PlurumTech.com
+# SPDX-License-Identifier: LicenseRef-Personal-Use-Only
 use strict;
 use warnings;
 use v5.16;
@@ -24,6 +26,9 @@ select((select(STDOUT), $|=1)[0]);
 my $MODE        = '';
 my $INSTALL_DIR = $DATA_DIR;
 my $REBUILD     = 0;
+my $PUSH        = 0;
+my $PULL        = 0;
+my $REGISTRY    = $ENV{DOCKER_REGISTRY} || 'docker.io/pltec/ptloganalyzer';
 
 my %comp = map { $_ => 0 } qw(infra collector app ai web ollama);
 my %db   = (host=>'', port=>5432, name=>'ptloganalyzer', user=>'ptlog', pass=>'', local=>1);
@@ -716,10 +721,70 @@ sub build_image {
   my $ver_dir = "$INSTALL_DIR/config";
   mkdir $ver_dir unless -d $ver_dir;
   open my $vjh, '>', "$ver_dir/version.json" or return;
-  printf $vjh qq|{"version":"%s","build_date":"%s","commit":"%s","components":{"base_image":"ptlog-base:%s","app_image":"ptlog-server:%s"}}\n|,
+  printf $vjh qq|{"version":"%s","build_date":"%s","commit":"%s","vendor":"Plurumtech.com","components":{"base_image":"ptlog-base:%s","app_image":"ptlog-server:%s"}}\n|,
     $version, $build_date, $git_commit, $version, $version;
   close $vjh;
   ok "Версия записана: $ver_dir/version.json";
+
+  # Push to registry if --push
+  if ($PUSH) {
+    push_images($version);
+  }
+}
+
+# ──────────────────────────────────────────────
+# Push images to registry
+# ──────────────────────────────────────────────
+sub push_images {
+  my ($version) = @_;
+  title "Публикация образов в $REGISTRY";
+
+  # Warn about secrets in image layers
+  my $pip_url = $ENV{PIP_INDEX_URL} // '';
+  if ($pip_url =~ /@/) {
+    warn_msg "ВНИМАНИЕ: PIP_INDEX_URL содержит credentials ($pip_url) — они попадут в слой образа!";
+    my $ans = prompt("Продолжить публикацию? [y/N]: ", 'n');
+    return unless $ans =~ /^[yY]/;
+  }
+
+  for my $img (qw(ptlog-base ptlog-server)) {
+    for my $tag ($version, 'latest') {
+      my $remote = "$REGISTRY:$tag-$img";
+      info "Тегирование $img:$tag -> $remote";
+      system('podman', 'tag', "$img:$tag", $remote);
+      info "Push $remote ...";
+      my $rc = system('podman', 'push', $remote);
+      if ($rc != 0) {
+        err "Push $remote провалился. Проверьте podman login.";
+        next;
+      }
+      ok "$remote опубликован";
+    }
+  }
+}
+
+# ──────────────────────────────────────────────
+# Pull pre-built images from registry
+# ──────────────────────────────────────────────
+sub pull_images {
+  my ($version) = @_;
+  unless ($version) {
+    $version = do { open my $vf, '<', "$SCRIPT_DIR/VERSION"; my $v = <$vf>; chomp $v; close $vf; $v // '0.0.0' };
+  }
+  title "Загрузка образов из $REGISTRY";
+
+  for my $img (qw(ptlog-base ptlog-server)) {
+    my $tag = "$REGISTRY:$version-$img";
+    info "Pull $tag ...";
+    my $rc = system('podman', 'pull', $tag);
+    if ($rc != 0) {
+      err "Pull $tag провалился. Проверьте доступность registry.";
+      next;
+    }
+    system('podman', 'tag', $tag, "$img:$version");
+    system('podman', 'tag', $tag, "$img:latest");
+    ok "$img:$version загружен и тегирован";
+  }
 }
 
 # ──────────────────────────────────────────────
@@ -963,12 +1028,25 @@ sub update_component {
 # Main
 # ──────────────────────────────────────────────
 sub main {
-  title "ptloganalyzer Setup v0.3 (Perl)";
+  title "ptloganalyzer Setup v0.3 (Perl)  © Plurumtech.com";
   say "  Log analysis system with AI summarization";
   say "  Лог: $LOG_FILE\n";
 
-  $REBUILD = grep { $_ eq '--rebuild' } @ARGV ? 1 : 0;
+  $REBUILD = (grep { $_ eq '--rebuild' } @ARGV) ? 1 : 0;
   info "Флаг --rebuild: принудительная пересборка base-образа" if $REBUILD;
+
+  $PUSH = (grep { $_ eq '--push' } @ARGV) ? 1 : 0;
+  info "Флаг --push: публикация образов в registry ($REGISTRY)" if $PUSH;
+
+  $PULL = (grep { $_ eq '--pull' } @ARGV) ? 1 : 0;
+  if ($PULL) {
+    info "Флаг --pull: загрузка готовых образов из $REGISTRY";
+    step "Проверка зависимостей";
+    check_prereqs;
+    pull_images;
+    title "Готово!";
+    exit 0;
+  }
 
   # Parse --update=<comp> (comma-separated or single)
   my ($update_raw) = map { /^--update=(.+)/ ? $1 : () } @ARGV;
@@ -1063,6 +1141,9 @@ sub main {
   say "$G│${N}    ./setup.pl                   # повторный запуск";
   say "$G│${N}    ./setup.pl --update=app      # обновить только app";
   say "$G│${N}    ./setup.pl --update=all      # обновить всё";
+  say "$G│${N}    ./setup.pl --push            # собрать + опубликовать в $REGISTRY";
+  say "$G│${N}    ./setup.pl --pull            # загрузить готовые образы из $REGISTRY";
+  say "$G│${N}    ./setup.pl --rebuild         # принудительная пересборка base";
   say "$G└─────────────────────────────────────────────────────┘${N}";
   say '';
   info "Полный лог: $LOG_FILE";

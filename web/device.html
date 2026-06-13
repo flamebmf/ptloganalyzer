@@ -1,24 +1,44 @@
+<!-- Copyright (c) 2026 PlurumTech.com -->
+<!-- SPDX-License-Identifier: LicenseRef-Personal-Use-Only -->
 <div class="header-block">
   <h1 id="deviceTitle">Устройство</h1>
   <div class="header-stats" id="deviceStats"></div>
 </div>
 
 <div class="chart-row">
-  <div class="chart-card full" id="volumeChart" style="height:220px"></div>
+  <div class="chart-card half" id="volumeChart"></div>
+  <div class="chart-card narrow" id="severityChart"></div>
 </div>
 
-<div class="chart-row">
-  <div class="chart-card half" id="severityChart" style="height:220px"></div>
-  <div class="chart-card half" id="summaryCard" style="height:220px;overflow-y:auto">
-    <div class="card-title" style="margin-bottom:8px"><i class="bi bi-stars"></i> <span data-i18n="ai_summary">AI сводка</span></div>
-    <div id="summaryContent"><span style="color:var(--pt-muted)">Загрузка...</span></div>
+<div class="chart-card" style="margin-top:14px">
+  <div class="summary-toolbar">
+    <div class="summary-tabs">
+      <button class="summary-tab active" data-type="" onclick="switchSummaryTab(this)">Сегодня</button>
+      <button class="summary-tab" data-type="daily" onclick="switchSummaryTab(this)">Дневные</button>
+      <button class="summary-tab" data-type="period" onclick="switchSummaryTab(this)">Часовые</button>
+    </div>
+    <div class="summary-nav">
+      <button class="btn btn-outline btn-sm" onclick="shiftSummaryDay(-1)"><i class="bi bi-chevron-left"></i></button>
+      <span id="summaryDateLabel" style="font-size:.82rem;font-weight:700;min-width:100px;text-align:center;display:inline-block;color:var(--pt-text)"></span>
+      <button class="btn btn-outline btn-sm" onclick="shiftSummaryDay(1)"><i class="bi bi-chevron-right"></i></button>
+      <button class="btn btn-outline btn-sm" onclick="todaySummary()" title="Сегодня"><i class="bi bi-calendar-check"></i></button>
+    </div>
+  </div>
+  <div id="summaryContent"><span style="color:var(--pt-muted)">Загрузка...</span></div>
+  <div id="summaryCarouselBar" class="summary-carousel-bar" style="display:none">
+    <button class="carousel-arrow" onclick="carouselMove(-1)" id="carouselPrev" style="visibility:hidden"><i class="bi bi-chevron-left"></i></button>
+    <div id="summaryDots" class="summary-dots"></div>
+    <button class="carousel-arrow" onclick="carouselMove(1)" id="carouselNext"><i class="bi bi-chevron-right"></i></button>
   </div>
 </div>
 
 <div class="chart-card" style="margin-top:14px">
   <div class="card-header">
     <div class="card-title"><span data-i18n="logs">Логи</span></div>
-    <button class="btn btn-outline btn-sm" onclick="loadDeviceLogs()"><i class="bi bi-arrow-clockwise"></i></button>
+    <div>
+      <button class="btn btn-outline btn-sm" id="toggleLogsBtn" onclick="toggleLogs()" style="display:none"><i class="bi bi-chevron-down"></i> <span id="toggleLogsLabel">Показать все</span></button>
+      <button class="btn btn-outline btn-sm" onclick="loadDeviceLogs()"><i class="bi bi-arrow-clockwise"></i></button>
+    </div>
   </div>
   <div class="search-bar">
     <input type="text" id="logSearch" placeholder="Поиск..." onkeyup="if(event.key==='Enter')loadDeviceLogs()">
@@ -29,6 +49,7 @@
       <option value="4">WARNING</option><option value="5">NOTICE</option>
       <option value="6">INFO</option><option value="7">DEBUG</option>
     </select>
+    <button class="btn btn-outline btn-sm" id="semanticToggle" onclick="toggleSemantic()" title="Семантический поиск"><i class="bi bi-stars"></i></button>
     <button class="btn btn-primary btn-sm" onclick="loadDeviceLogs()"><i class="bi bi-search"></i></button>
   </div>
   <div id="logList"></div>
@@ -38,6 +59,33 @@
 var deviceId = null;
 var volumeChart = null;
 var sevChart = null;
+var _allLogs = [];
+var _logsExpanded = false;
+var _semanticMode = false;
+
+// Summary carousel state
+var _summaryType = '';
+var _summaryDate = '';
+var _summaryItems = [];
+var _summaryIndex = 0;
+
+function fmtHour(iso) {
+  if (!iso) return '';
+  var d = new Date(iso);
+  return '' + d.getHours();
+}
+
+function fmtDateLabel(iso) {
+  if (!iso) return '';
+  var d = new Date(iso + 'T00:00:00');
+  var today = new Date();
+  var y = d.getFullYear(), m = ('0'+(d.getMonth()+1)).slice(-2), day = ('0'+d.getDate()).slice(-2);
+  var label = day + '.' + m + '.' + y;
+  if (y === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() === today.getDate()) {
+    label = 'Сегодня, ' + label;
+  }
+  return label;
+}
 
 async function loadDevice() {
   var main = document.getElementById('mainContent');
@@ -59,73 +107,204 @@ async function loadDevice() {
 
     loadCharts();
     loadDeviceLogs();
-    loadSummary();
+    loadSummaries();
   } catch(err) { showToast('Error: '+err, 'error'); }
 }
 
 async function loadCharts() {
-  var volumeData = await apiGet('/api/logs?device_id=' + deviceId + '&limit=1000');
-  var hourMap = {};
-  volumeData.items.forEach(function(l) {
-    var d = new Date(l.ts);
-    var h = new Date(d.getFullYear(),d.getMonth(),d.getDate(),d.getHours()).toISOString();
-    hourMap[h] = (hourMap[h]||0) + 1;
-  });
-  var volData = Object.entries(hourMap).map(function(entry) { return {hour: entry[0], count: entry[1]}; });
-  volData.sort(function(a,b) { return a.hour.localeCompare(b.hour); });
+  var hist = await apiGet('/api/devices/' + deviceId + '/history');
+  var volData = (hist.volume || []).map(function(d) { return {hour: d.hour, count: d.count}; });
+  var sevData = (hist.severity || []).map(function(d) { return {severity: d.severity, count: d.count}; });
 
   if (volumeChart) volumeChart.destroy();
   volumeChart = createLogVolumeChart('volumeChart', volData);
-
-  var sevMap = {};
-  volumeData.items.forEach(function(l) { sevMap[l.severity] = (sevMap[l.severity]||0) + 1; });
-  var sevData = Object.entries(sevMap).map(function(entry) { return {severity: parseInt(entry[0]), count: entry[1]}; });
 
   if (sevChart) sevChart.destroy();
   sevChart = createSeverityChart('severityChart', sevData);
 }
 
+function renderLogs(data) {
+  _allLogs = data.items || [];
+  _logsExpanded = false;
+  renderLogList();
+}
+
+function renderLogList(semantic) {
+  var list = document.getElementById('logList');
+  var toggleBtn = document.getElementById('toggleLogsBtn');
+  var toggleLabel = document.getElementById('toggleLogsLabel');
+
+  if (_allLogs.length === 0) {
+    list.innerHTML = '<div class="empty-state"><p>Нет результатов</p></div>';
+    toggleBtn.style.display = 'none';
+    return;
+  }
+
+  var show = semantic || _logsExpanded ? _allLogs : _allLogs.slice(0, 3);
+  list.innerHTML = show.map(function(l) {
+    var scoreHtml = l.score ? ' <span style="color:var(--pt-muted);font-size:.72rem">(' + (l.score*100).toFixed(0) + '%)</span>' : '';
+    return '<div class="log-line">'
+      + '<span class="ts">' + formatTime(l.ts) + '</span>'
+      + '<span class="sev ' + severityClass(l.severity) + '">' + severityBadge(l.severity) + '</span>'
+      + '<span class="msg">' + l.message + scoreHtml + '</span>'
+      + '</div>';
+  }).join('');
+
+  if (!semantic && _allLogs.length > 3) {
+    toggleBtn.style.display = 'inline-block';
+    toggleLabel.textContent = _logsExpanded ? 'Свернуть' : 'Показать все (' + _allLogs.length + ')';
+    document.getElementById('toggleLogsBtn').querySelector('i').className = _logsExpanded ? 'bi bi-chevron-up' : 'bi bi-chevron-down';
+  } else {
+    toggleBtn.style.display = 'none';
+  }
+}
+
+function toggleLogs() {
+  _logsExpanded = !_logsExpanded;
+  renderLogList();
+}
+
+function toggleSemantic() {
+  _semanticMode = !_semanticMode;
+  var btn = document.getElementById('semanticToggle');
+  btn.classList.toggle('btn-outline');
+  btn.classList.toggle('btn-primary');
+  if (_semanticMode) {
+    document.getElementById('sevFilter').disabled = true;
+    showToast('Семантический поиск: найду похожие логи по смыслу');
+  } else {
+    document.getElementById('sevFilter').disabled = false;
+  }
+  loadDeviceLogs();
+}
+
 async function loadDeviceLogs() {
   if (!deviceId) return;
   var query = document.getElementById('logSearch').value;
+
+  if (_semanticMode) {
+    if (!query) { _allLogs = []; renderLogList(); return; }
+    var url = '/api/logs/similar?q=' + encodeURIComponent(query) + '&device_id=' + deviceId + '&limit=20';
+    try {
+      var data = await apiGet(url);
+      _allLogs = data.items.map(function(r) {
+        return { id: r.log_id, device_id: r.device_id, ts: r.ts, severity: 6, message: r.snippet, score: r.score };
+      });
+      renderLogList(true);
+    } catch(err) { showToast('Ошибка: '+err, 'error'); }
+    return;
+  }
+
   var sev = document.getElementById('sevFilter').value;
-  var url = '/api/logs?device_id=' + deviceId + '&limit=50';
+  var url = '/api/logs?device_id=' + deviceId + '&limit=20';
   if (query) url += '&query=' + encodeURIComponent(query);
   if (sev) url += '&severity=' + sev;
 
   try {
     var data = await apiGet(url);
-    var list = document.getElementById('logList');
-    if (data.items.length === 0) {
-      list.innerHTML = '<div class="empty-state"><p>Нет логов</p></div>';
-      return;
-    }
-    list.innerHTML = data.items.map(function(l) {
-      return '<div class="log-line">'
-        + '<span class="ts">' + formatTime(l.ts) + '</span>'
-        + '<span class="sev ' + severityClass(l.severity) + '">' + severityBadge(l.severity) + '</span>'
-        + '<span class="msg">' + l.message + '</span>'
-        + '</div>';
-    }).join('');
+    renderLogs(data);
   } catch(err) { showToast('Error: '+err, 'error'); }
 }
 
-async function loadSummary() {
+function todayStr() {
+  var d = new Date();
+  return d.getFullYear() + '-' + ('0'+(d.getMonth()+1)).slice(-2) + '-' + ('0'+d.getDate()).slice(-2);
+}
+
+function switchSummaryTab(btn) {
+  document.querySelectorAll('.summary-tab').forEach(function(t) { t.classList.remove('active'); });
+  btn.classList.add('active');
+  _summaryType = btn.dataset.type;
+  _summaryDate = todayStr();
+  loadSummaries();
+}
+
+function shiftSummaryDay(delta) {
+  if (!_summaryDate) _summaryDate = todayStr();
+  var d = new Date(_summaryDate + 'T00:00:00');
+  d.setDate(d.getDate() + delta);
+  _summaryDate = d.getFullYear() + '-' + ('0'+(d.getMonth()+1)).slice(-2) + '-' + ('0'+d.getDate()).slice(-2);
+  loadSummaries();
+}
+
+function todaySummary() {
+  _summaryDate = todayStr();
+  loadSummaries();
+}
+
+async function loadSummaries() {
   if (!deviceId) return;
+  if (!_summaryDate) _summaryDate = todayStr();
+
+  var url = '/api/summaries?device_id=' + deviceId + '&limit=20&tz_offset=' + (-new Date().getTimezoneOffset());
+  if (_summaryType) url += '&summary_type=' + _summaryType;
+  if (_summaryDate) url += '&date=' + _summaryDate;
+
   try {
-    var data = await apiGet('/api/summaries?device_id=' + deviceId);
-    var el = document.getElementById('summaryContent');
-    if (data.length === 0) {
-      el.innerHTML = '<span style="color:var(--pt-muted)">Нет сводок. AI суммаризация выполняется по расписанию.</span>';
+    var data = await apiGet(url);
+    _summaryItems = data.items || [];
+    _summaryIndex = 0;
+
+    document.getElementById('summaryDateLabel').textContent = fmtDateLabel(_summaryDate);
+
+    if (_summaryItems.length === 0) {
+      document.getElementById('summaryContent').innerHTML = '<div class="empty-state"><p>Нет сводок</p></div>';
+      document.getElementById('summaryCarouselBar').style.display = 'none';
       return;
     }
-    el.innerHTML = data.slice(0,3).map(function(s) {
-      return '<div class="summary-block">'
-        + '<small style="color:var(--pt-muted)">' + formatTime(s.period_start) + ' — ' + formatTime(s.period_end) + '</small>'
-        + '<div style="margin-top:6px;font-size:.9rem">' + s.summary + '</div>'
-        + '</div>';
-    }).join('');
+
+    renderSummaryItem();
   } catch(err) {}
+}
+
+function renderSummaryItem() {
+  var el = document.getElementById('summaryContent');
+  var bar = document.getElementById('summaryCarouselBar');
+  var s = _summaryItems[_summaryIndex];
+  if (!s) return;
+
+  var icon = s.summary_type === 'daily' ? 'bi-calendar3' : 'bi-clock';
+  var badge = s.summary_type === 'daily' ? ' <span class="badge badge-info" style="font-size:.65rem">daily</span>' : '';
+  var hdr = '<small style="color:var(--pt-muted);display:block;margin-bottom:6px">'
+    + '<i class="bi ' + icon + '"></i> '
+    + formatTime(s.period_start) + ' — ' + formatTime(s.period_end)
+    + badge
+    + (s.model ? ' <span style="color:var(--pt-muted);font-size:.7rem">[' + s.model + ']</span>' : '')
+    + '</small>';
+
+  el.innerHTML = '<div class="summary-block">'
+    + hdr
+    + '<div style="font-size:.85rem;line-height:1.7">' + convertLogIds(s.summary) + '</div>'
+    + '</div>';
+
+  // Carousel bar
+  if (_summaryItems.length > 1) {
+    bar.style.display = 'flex';
+    document.getElementById('carouselPrev').style.visibility = _summaryIndex > 0 ? 'visible' : 'hidden';
+    document.getElementById('carouselNext').style.visibility = _summaryIndex < _summaryItems.length - 1 ? 'visible' : 'hidden';
+
+    var dots = document.getElementById('summaryDots');
+    dots.innerHTML = _summaryItems.map(function(item, i) {
+      var label = s.summary_type === 'period' ? fmtHour(item.period_start) : (i + 1);
+      var active = i === _summaryIndex ? ' active' : '';
+      return '<span class="carousel-dot' + active + '" onclick="carouselGo(' + i + ')">' + label + '</span>';
+    }).join('');
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
+function carouselMove(dir) {
+  var i = _summaryIndex + dir;
+  if (i < 0 || i >= _summaryItems.length) return;
+  _summaryIndex = i;
+  renderSummaryItem();
+}
+
+function carouselGo(i) {
+  if (i < 0 || i >= _summaryItems.length) return;
+  _summaryIndex = i;
+  renderSummaryItem();
 }
 
 window.pageLoaded = loadDevice;

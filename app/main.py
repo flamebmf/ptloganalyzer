@@ -1,3 +1,5 @@
+# Copyright (c) 2026 PlurumTech.com
+# SPDX-License-Identifier: LicenseRef-Personal-Use-Only
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -8,7 +10,7 @@ import structlog
 
 from app.config import Config
 from app.database import Database
-from app.version import APP_VERSION, COMPONENTS
+from app.version import APP_VERSION, APP_VENDOR, COMPONENTS
 
 log = structlog.get_logger()
 config = Config()
@@ -18,6 +20,8 @@ db = Database(config)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     log.info("app_starting", version=config.version)
+    from app.routers.settings import apply_overrides
+    apply_overrides()
     await db.connect()
 
     # Seed devices from config
@@ -39,11 +43,17 @@ def create_app() -> FastAPI:
     )
 
     # Health check
+    @app.get("/favicon.ico")
+    async def favicon():
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f4ca.png")
+
     @app.get("/health")
     async def health():
         return {
             "status": "ok",
             "version": APP_VERSION,
+            "vendor": APP_VENDOR,
             "components": COMPONENTS,
         }
 
@@ -52,6 +62,7 @@ def create_app() -> FastAPI:
         return {
             "app": config.name,
             "version": APP_VERSION,
+            "vendor": APP_VENDOR,
             "components": COMPONENTS,
         }
 

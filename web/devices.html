@@ -1,3 +1,5 @@
+<!-- Copyright (c) 2026 PlurumTech.com -->
+<!-- SPDX-License-Identifier: LicenseRef-Personal-Use-Only -->
 <div class="header-block">
   <h1><span data-i18n="devices">Устройства</span></h1>
   <div class="header-stats" id="deviceHeaderStats">
@@ -14,28 +16,37 @@
 </div>
 
 <script>
+var _miniCharts = [];
+
 async function loadDevices() {
   try {
     var devices = await apiGet('/api/devices');
+    var bulk = await apiGet('/api/devices/bulk-data');
     var grid = document.getElementById('deviceGrid');
     var html = '';
     var active = 0;
 
     for (var d of devices) {
-      var stats = await apiGet(`/api/devices/${d.id}/stats`);
-      var lastSeen = stats.last_seen ? formatTime(stats.last_seen) : '-';
-      var status = stats.last_seen ? 'online' : 'offline';
-      if (stats.last_seen) active++;
-      html += '<div class="card-dash" onclick="loadPage(\'device.html?id=' + d.id + '\')" style="cursor:pointer">'
+      var s = (bulk.stats || {})[String(d.id)] || {};
+      var lastSeen = s.last_seen ? formatTime(s.last_seen) : '-';
+      var status = s.last_seen ? 'online' : 'offline';
+      if (s.last_seen) active++;
+      var chartId = 'miniChart_' + d.id;
+      var cardTitle = d.name || d.hostname;
+      var cardSub = d.name ? d.hostname : '';
+      html += '<div class="card-dash" id="card_' + d.id + '" style="cursor:pointer">'
+        + '<div onclick="loadPage(\'device.html?id=' + d.id + '\')">'
         + '<div class="card-header">'
-        + '<div class="card-title">' + d.hostname + (d.ip ? ' <span style="color:var(--pt-muted);font-weight:400;font-size:.8rem">(' + d.ip + ')</span>' : '') + '</div>'
-        + '<span class="' + status + '"><i class="bi bi-circle-fill" style="font-size:.6rem"></i> ' + status + '</span>'
+        + '<div class="card-title">' + cardTitle + (d.ip ? ' <span style="color:var(--pt-muted);font-weight:400;font-size:.8rem">(' + d.ip + ')</span>' : '') + '</div>'
+        + '<span class="card-status ' + status + '"><i class="bi bi-circle-fill" style="font-size:.6rem"></i> ' + status + '</span>'
         + '</div><div class="card-body">'
-        + (d.name ? '<div><span style="color:var(--pt-muted)">' + d.name + '</span></div>' : '')
-        + '<div class="card-stat"><span data-i18n="last_seen">Последний раз</span> <span>' + lastSeen + '</span></div>'
-        + '<div class="card-stat"><span>Logs / 24h</span> <span class="stat-val">' + (stats.total || 0) + '</span></div>'
-        + '<div class="card-stat"><span data-i18n="anomalies">Аномалии</span> <span>' + (stats.errors || 0) + '</span></div>'
-        + '</div></div>';
+        + (cardSub ? '<div><span style="color:var(--pt-muted)">' + cardSub + '</span></div>' : '')
+        + '<div class="card-stat"><span data-i18n="last_seen">Последний раз</span> <span class="card-lastseen">' + lastSeen + '</span></div>'
+        + '<div class="card-stat"><span>Logs / 24h</span> <span class="card-logvol stat-val">' + (s.total || 0) + '</span></div>'
+        + '<div class="card-stat"><span data-i18n="anomalies">Аномалии</span> <span class="card-anomalies">' + (s.errors || 0) + '</span></div>'
+        + '</div></div>'
+        + '<div id="' + chartId + '" style="height:60px;margin:4px 10px 6px"></div>'
+        + '</div>';
     }
     if (devices.length === 0) {
       html = '<div class="empty-state" style="grid-column:1/-1"><div class="icon"><i class="bi bi-hdd-stack"></i></div><p>Нет устройств. Добавьте через настройки.</p></div>';
@@ -43,10 +54,80 @@ async function loadDevices() {
     grid.innerHTML = html;
     document.getElementById('totalDevices').textContent = devices.length;
     document.getElementById('activeDevices').textContent = active;
+    renderMiniCharts(devices, bulk.charts);
   } catch(err) {
     showToast('Error loading devices: '+err, 'error');
   }
 }
 
+function startAutoRefresh() {
+  if (window._devRefreshTimer) clearInterval(window._devRefreshTimer);
+  window._devRefreshTimer = setInterval(refreshCards, 30000);
+}
+
+async function refreshCards() {
+  try {
+    var devices = await apiGet('/api/devices');
+    var bulk = await apiGet('/api/devices/bulk-data');
+    var grid = document.getElementById('deviceGrid');
+    if (!grid) return;
+    var active = 0;
+    for (var d of devices) {
+      var card = document.getElementById('card_' + d.id);
+      if (!card) continue;
+      var s = (bulk.stats || {})[String(d.id)] || {};
+      var lastSeen = s.last_seen ? formatTime(s.last_seen) : '-';
+      if (s.last_seen) active++;
+      card.querySelector('.card-status').className = 'card-status ' + (s.last_seen ? 'online' : 'offline');
+      card.querySelector('.card-status').innerHTML = '<i class="bi bi-circle-fill" style="font-size:.6rem"></i> ' + (s.last_seen ? 'online' : 'offline');
+      var ls = card.querySelector('.card-lastseen');
+      if (ls) ls.textContent = lastSeen;
+      var lv = card.querySelector('.card-logvol');
+      if (lv) lv.textContent = s.total || 0;
+      var ae = card.querySelector('.card-anomalies');
+      if (ae) ae.textContent = s.errors || 0;
+    }
+    document.getElementById('totalDevices').textContent = devices.length;
+    document.getElementById('activeDevices').textContent = active;
+    renderMiniCharts(devices, bulk.charts);
+  } catch(e) {}
+}
+
+function renderMiniCharts(devices, chartData) {
+  var sevColors = ['#ff1744','#ff5252','#d50000','#ff9100','#ffd740','#00e676','#00d4ff','#7a8294'];
+  var sevLabels = ['Emerg','Alert','Crit','Err','Warning','Notice','Info','Debug'];
+  for (var _mc of _miniCharts) { _mc.destroy(); }
+  _miniCharts = [];
+  if (!chartData) return;
+  devices.forEach(function(d) {
+    var h = chartData[String(d.id)];
+    if (!h || !h.series) return;
+    var el = document.getElementById('miniChart_' + d.id);
+    if (!el) return;
+    var series = [];
+    for (var s = 0; s < h.series.length; s++) {
+      var nameIdx = sevLabels.indexOf(h.series[s].name);
+      var color = nameIdx >= 0 ? sevColors[nameIdx] : '#7a8294';
+      series.push({name: h.series[s].name, data: h.series[s].data, color: color});
+    }
+    if (series.length === 0) return;
+    var chart = new ApexCharts(el, {
+      chart: {type:'bar',height:60,width:'100%',stacked:true,sparkline:{enabled:true},toolbar:{show:false},foreColor:'#8892a4',fontFamily:'inherit'},
+      plotOptions: {bar:{columnWidth:'80%',borderRadius:0}},
+      dataLabels: {enabled:false},
+      series: series,
+      xaxis: {type:'datetime',categories:h.categories,labels:{show:false},axisBorder:{show:false},axisTicks:{show:false}},
+      yaxis: {show:false,labels:{show:false},axisBorder:{show:false}},
+      grid: {show:false},
+      tooltip: {enabled:false},
+      legend: {show:false},
+      fill: {opacity:1},
+    });
+    chart.render();
+    _miniCharts.push(chart);
+  });
+}
+
 loadDevices();
+startAutoRefresh();
 </script>

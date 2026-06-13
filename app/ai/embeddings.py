@@ -1,3 +1,5 @@
+# Copyright (c) 2026 PlurumTech.com
+# SPDX-License-Identifier: LicenseRef-Personal-Use-Only
 import structlog
 
 from app.ai import create_provider
@@ -25,11 +27,27 @@ class EmbeddingService:
             limit,
         )
         if not logs:
+            log.info("embeddings_no_pending")
             return
+
+        log.info("embeddings_start", count=len(logs),
+                  ids=[r["id"] for r in logs[:5]],
+                  provider=self.provider.__class__.__name__,
+                  model=self.provider.embed_model)
+
+        bad = [l for l in logs if l["message"] is None]
+        if bad:
+            log.warning("embeddings_skip_none_message", ids=[r["id"] for r in bad])
+            logs = [l for l in logs if l["message"] is not None]
+            if not logs:
+                return
 
         texts = [l["message"] for l in logs]
         try:
             embeddings = await self.provider.embed_batch(texts)
+            log.info("embeddings_api_ok", count=len(embeddings),
+                      dims=len(embeddings[0]))
+
             for log_row, emb in zip(logs, embeddings):
                 snippet = log_row["message"][:512]
                 emb_str = "[" + ",".join(str(x) for x in emb) + "]"

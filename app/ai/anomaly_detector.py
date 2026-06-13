@@ -1,3 +1,5 @@
+# Copyright (c) 2026 PlurumTech.com
+# SPDX-License-Identifier: LicenseRef-Personal-Use-Only
 import structlog
 from collections import Counter
 
@@ -12,15 +14,15 @@ class AnomalyDetector:
         self.db = db
         self.provider = create_provider(config)
 
-    async def run_for_device(self, device_id: int):
+    async def run_for_device(self, device_id: int, ai_enabled: bool = True):
         # Always run statistical detectors (no AI needed)
         await self._check_volume(device_id)
         await self._check_error_flood(device_id)
         await self._check_duplicate_burst(device_id)
         await self._check_app_spike(device_id)
 
-        # AI-based content analysis (only if provider configured)
-        if self.provider:
+        # AI-based content analysis (only if provider configured + ai_enabled per device)
+        if self.provider and ai_enabled:
             await self._check_ai_content(device_id)
 
     async def _check_volume(self, device_id: int):
@@ -98,10 +100,11 @@ class AnomalyDetector:
         for r in rows:
             msg = r["message"]
             short = msg[:80] + ("..." if len(msg) > 80 else "")
+            flood_msg = short
             await self.db.insert_anomaly(
                 device_id, "warning" if r["cnt"] < 50 else "critical",
                 "Message flood detected",
-                f"'{short}' repeated {r['cnt']}x in 5 min",
+                f"{flood_msg} · повтор {r['cnt']}x за 5 мин",
             )
             log.warning("message_flood", device_id=device_id,
                          count=r["cnt"], message=short)

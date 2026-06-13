@@ -1,3 +1,5 @@
+# Copyright (c) 2026 PlurumTech.com
+# SPDX-License-Identifier: LicenseRef-Personal-Use-Only
 import re
 import socket
 from datetime import datetime, timezone
@@ -116,6 +118,93 @@ def parse_syslog(data: bytes, source_addr: tuple | None = None) -> dict | None:
         "raw": raw,
         "source_ip": source_addr[0] if source_addr else None,
     }
+
+
+def parse_syslog_raw(raw: str, source_addr) -> dict | None:
+    return parse_syslog(raw.encode("utf-8"), source_addr)
+
+
+# RFC 3164 with app_name extraction from MSG tag
+RFC3164_APP_RE = re.compile(
+    r"<(\d{1,3})>"                            # PRI
+    r"(\S{3}\s+\d{1,2}\s\d{2}:\d{2}:\d{2})\s" # TIMESTAMP
+    r"(\S+)\s"                                # HOSTNAME
+    r"(\S+?)(?:\[(\d+)\])?:\s"                # APPNAME[PID]:
+    r"(.*)"                                    # MSG
+)
+
+# Aruba IAP structured log
+ARUBA_RE = re.compile(
+    r"<(\d{1,3})>"                            # PRI
+    r"(\S{3}\s+\d{1,2}\s\d{2}:\d{2}:\d{2})\s" # TIMESTAMP
+    r"(\S+)\s"                                # HOSTNAME
+    r"(\S+?)(?:\[(\d+)\])?:\s"                # APPNAME[PID]:
+    r"(.*)"                                    # MSG
+)
+
+
+def parse_rfc3164_tag(raw: str, source_addr) -> dict | None:
+    m = RFC3164_APP_RE.match(raw)
+    if not m:
+        return None
+    pri = int(m.group(1))
+    facility, severity = parse_priority(pri)
+    return {
+        "facility": facility,
+        "severity": severity,
+        "timestamp": parse_timestamp(m.group(2)),
+        "hostname": m.group(3),
+        "app_name": m.group(4) or "-",
+        "process_id": m.group(5) or "",
+        "msgid": "",
+        "message": m.group(6) or raw,
+        "raw": raw,
+        "source_ip": source_addr[0] if source_addr else None,
+    }
+
+
+def parse_aruba_iap(raw: str, source_addr) -> dict | None:
+    m = ARUBA_RE.match(raw)
+    if not m:
+        return None
+    pri = int(m.group(1))
+    facility, severity = parse_priority(pri)
+    msg = m.group(6) or raw
+    ap_name = m.group(3)
+    app_name = m.group(4) or "-"
+    if "|AP " in msg:
+        ap_match = re.search(r"\|AP\s+(\S+)", msg)
+        if ap_match:
+            ap_name = ap_match.group(1).rstrip("@")
+    return {
+        "facility": facility,
+        "severity": severity,
+        "timestamp": parse_timestamp(m.group(2)),
+        "hostname": ap_name,
+        "app_name": app_name,
+        "process_id": m.group(5) or "",
+        "msgid": "",
+        "message": msg,
+        "raw": raw,
+        "source_ip": source_addr[0] if source_addr else None,
+    }
+
+
+PARSERS = {
+    "default": lambda raw, addr: parse_syslog_raw(raw, addr),
+    "rfc3164_tag": parse_rfc3164_tag,
+    "aruba_iap": parse_aruba_iap,
+}
+
+
+def parse_with_template(parser_type: str, data: bytes, source_addr) -> dict:
+    parser = PARSERS.get(parser_type)
+    text = data.decode("utf-8", errors="replace").strip()
+    if parser:
+        result = parser(text, source_addr)
+        if result:
+            return result
+    return parse_syslog_raw(text, source_addr)
 
 
 SEVERITY_NAMES = {

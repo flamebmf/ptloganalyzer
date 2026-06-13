@@ -1,3 +1,5 @@
+# Copyright (c) 2026 PlurumTech.com
+# SPDX-License-Identifier: LicenseRef-Personal-Use-Only
 import json
 
 import httpx
@@ -10,9 +12,12 @@ class RouterAIProvider(AIProvider):
         self.api_key = config.routerai_api_key
         self.base_url = config.routerai_base_url.rstrip("/")
         self.chat_model = config.routerai_chat_model
-        self.embed_model = config.routerai_embedding_model
+        em = config.routerai_embedding_model
+        if em and "/" not in em:
+            em = "openai/" + em
+        self.embed_model = em
         self._dims = config.routerai_embedding_dims
-        self._client = httpx.AsyncClient(timeout=120)
+        self._client = httpx.AsyncClient(timeout=180)
 
     @property
     def embedding_dims(self) -> int:
@@ -32,21 +37,35 @@ class RouterAIProvider(AIProvider):
         return resp.json()["choices"][0]["message"]["content"]
 
     async def embed(self, text: str) -> list[float]:
+        import structlog
+        log = structlog.get_logger()
         resp = await self._client.post(
             f"{self.base_url}/embeddings",
             headers={"Authorization": f"Bearer {self.api_key}"},
             json={"model": self.embed_model, "input": text},
         )
-        resp.raise_for_status()
+        if resp.status_code != 200:
+            log.warning("embed_http_error",
+                         status=resp.status_code,
+                         body=resp.text[:500],
+                         model=self.embed_model)
+            resp.raise_for_status()
         return resp.json()["data"][0]["embedding"]
 
     async def embed_batch(self, texts: list[str]) -> list[list[float]]:
+        import structlog
+        log = structlog.get_logger()
         resp = await self._client.post(
             f"{self.base_url}/embeddings",
             headers={"Authorization": f"Bearer {self.api_key}"},
             json={"model": self.embed_model, "input": texts},
         )
-        resp.raise_for_status()
+        if resp.status_code != 200:
+            log.warning("embed_batch_http_error",
+                         status=resp.status_code,
+                         body=resp.text[:500],
+                         model=self.embed_model)
+            resp.raise_for_status()
         data = resp.json()["data"]
         data.sort(key=lambda x: x["index"])
         return [d["embedding"] for d in data]

@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS devices (
     name        VARCHAR(255),
     description TEXT,
     device_type VARCHAR(50) DEFAULT 'other',
+    parser      VARCHAR(50) DEFAULT 'default',
     enabled     BOOLEAN DEFAULT true,
     created_at  TIMESTAMPTZ DEFAULT NOW(),
     updated_at  TIMESTAMPTZ DEFAULT NOW()

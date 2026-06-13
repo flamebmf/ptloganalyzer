@@ -1,3 +1,5 @@
+# Copyright (c) 2026 PlurumTech.com
+# SPDX-License-Identifier: LicenseRef-Personal-Use-Only
 import subprocess
 import sys
 from pathlib import Path
@@ -24,6 +26,7 @@ def get_podman_version() -> str:
 
 
 APP_VERSION = get_version()
+APP_VENDOR = "Plurumtech.com"
 COMPONENTS = {
     "backend": APP_VERSION,
     "collector": APP_VERSION,

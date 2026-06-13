@@ -3,6 +3,8 @@
 # Пересобирается только при изменении requirements.txt
 # ============================================================
 FROM python:3.12-slim AS base
+# Copyright (c) 2026 PlurumTech.com
+# SPDX-License-Identifier: LicenseRef-Personal-Use-Only
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
@@ -39,6 +41,7 @@ LABEL app="ptloganalyzer" \
       version="$VERSION" \
       build-date="$BUILD_DATE" \
       commit="$COMMIT" \
+      vendor="Plurumtech.com" \
       description="Log analysis system with AI summarization"
 
 COPY VERSION /app/VERSION

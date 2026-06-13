@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 PlurumTech.com
+# SPDX-License-Identifier: LicenseRef-Personal-Use-Only
 set -uo pipefail
 # ptloganalyzer — предзагрузка Python-зависимостей на хосте
 # Использование:  bash download-deps.sh

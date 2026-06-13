@@ -1,3 +1,5 @@
+# Copyright (c) 2026 PlurumTech.com
+# SPDX-License-Identifier: LicenseRef-Personal-Use-Only
 import json
 
 import httpx
@@ -11,7 +13,7 @@ class OllamaProvider(AIProvider):
         self.chat_model = config.ollama_chat_model
         self.embed_model = config.ollama_embedding_model
         self._dims = config.ollama_embedding_dims
-        self._client = httpx.AsyncClient(timeout=120)
+        self._client = httpx.AsyncClient(timeout=180)
 
     @property
     def embedding_dims(self) -> int:

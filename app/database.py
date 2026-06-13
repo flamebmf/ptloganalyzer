@@ -1,4 +1,7 @@
+# Copyright (c) 2026 PlurumTech.com
+# SPDX-License-Identifier: LicenseRef-Personal-Use-Only
 import asyncpg
+import re
 
 
 # ── Core schema. pgvector objects are created separately so they can be added
@@ -11,7 +14,9 @@ CREATE TABLE IF NOT EXISTS devices (
     name        VARCHAR(255),
     description TEXT,
     device_type VARCHAR(50) DEFAULT 'other',
+    parser      VARCHAR(50) DEFAULT 'default',
     enabled     BOOLEAN DEFAULT true,
+    ai_enabled  BOOLEAN DEFAULT true,
     created_at  TIMESTAMPTZ DEFAULT NOW(),
     updated_at  TIMESTAMPTZ DEFAULT NOW()
 );
@@ -55,6 +60,7 @@ CREATE TABLE IF NOT EXISTS summaries (
     period_end   TIMESTAMPTZ NOT NULL,
     summary      TEXT NOT NULL,
     model        VARCHAR(64),
+    summary_type VARCHAR(20) DEFAULT 'period',
     created_at   TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_summaries_device_period ON summaries(device_id, period_start DESC);
@@ -124,11 +130,46 @@ class Database:
 
     async def _ensure_indexes(self):
         async with self.pool.acquire() as conn:
-            await conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_devices_ip ON devices(ip)"
+            # Remove duplicate IPs with cascade, keep lowest id
+            dups = await conn.fetch(
+                "SELECT a.id FROM devices a JOIN devices b ON a.ip = b.ip WHERE a.id > b.id AND a.ip IS NOT NULL"
             )
+            dup_ids = [r["id"] for r in dups]
+            if dup_ids:
+                for table in ('log_embeddings', 'summaries', 'anomalies', 'syslog_messages'):
+                    await conn.execute(f"DELETE FROM {table} WHERE device_id = ANY($1::int[])", dup_ids)
+                await conn.execute("DELETE FROM devices WHERE id = ANY($1::int[])", dup_ids)
+            await conn.execute("DROP INDEX IF EXISTS idx_devices_ip")
+            try:
+                await conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_devices_ip ON devices(ip) WHERE ip IS NOT NULL")
+            except Exception:
+                pass  # non-fatal; missing unique index means duplicates are handled at app level
             await conn.execute(
                 "ALTER TABLE devices DROP CONSTRAINT IF EXISTS devices_hostname_key"
+            )
+            await conn.execute(
+                "ALTER TABLE devices ADD COLUMN IF NOT EXISTS parser VARCHAR(50) DEFAULT 'default'"
+            )
+            await conn.execute(
+                "ALTER TABLE devices ADD COLUMN IF NOT EXISTS ai_enabled BOOLEAN DEFAULT true"
+            )
+            await conn.execute(
+                "ALTER TABLE summaries ADD COLUMN IF NOT EXISTS summary_type VARCHAR(20) DEFAULT 'period'"
+            )
+            await conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_summaries_type ON summaries(summary_type)"
+            )
+            await conn.execute(
+                "ALTER TABLE anomalies ADD COLUMN IF NOT EXISTS last_seen TIMESTAMPTZ DEFAULT NOW()"
+            )
+            await conn.execute(
+                "ALTER TABLE anomalies ADD COLUMN IF NOT EXISTS count INT DEFAULT 1"
+            )
+            await conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_anomalies_merge ON anomalies(device_id, title)"
+            )
+            await conn.execute(
+                "ALTER TABLE anomalies ADD COLUMN IF NOT EXISTS recommendation TEXT"
             )
 
     async def close(self):
@@ -171,14 +212,14 @@ class Database:
 
     async def list_devices(self) -> list[dict]:
         rows = await self.fetch(
-            "SELECT id, hostname, ip, name, device_type, enabled, created_at "
+            "SELECT id, hostname, ip, name, device_type, enabled, ai_enabled, created_at "
             "FROM devices ORDER BY hostname"
         )
         return [dict(r) for r in rows]
 
     async def get_device(self, device_id: int) -> dict | None:
         row = await self.fetchrow(
-            "SELECT id, hostname, ip, name, device_type, enabled, created_at "
+            "SELECT id, hostname, ip, name, device_type, enabled, ai_enabled, created_at "
             "FROM devices WHERE id = $1", device_id
         )
         return dict(row) if row else None
@@ -189,6 +230,22 @@ class Database:
         await self.execute(
             f"UPDATE devices SET {sets} WHERE id = ${len(kwargs)+1}", *vals
         )
+
+    async def clear_device_logs(self, device_id: int) -> int:
+        async with self.pool.acquire() as conn:
+            await conn.execute("DELETE FROM log_embeddings WHERE device_id = $1", device_id)
+            await conn.execute("DELETE FROM summaries WHERE device_id = $1", device_id)
+            await conn.execute("DELETE FROM anomalies WHERE device_id = $1", device_id)
+            result = await conn.execute("DELETE FROM syslog_messages WHERE device_id = $1", device_id)
+            return int(result.split()[-1]) if result else 0
+
+    async def delete_device(self, device_id: int):
+        async with self.pool.acquire() as conn:
+            await conn.execute("DELETE FROM log_embeddings WHERE device_id = $1", device_id)
+            await conn.execute("DELETE FROM summaries WHERE device_id = $1", device_id)
+            await conn.execute("DELETE FROM anomalies WHERE device_id = $1", device_id)
+            await conn.execute("DELETE FROM syslog_messages WHERE device_id = $1", device_id)
+            await conn.execute("DELETE FROM devices WHERE id = $1", device_id)
 
     # ── Logs ──
 
@@ -229,58 +286,220 @@ class Database:
         if query:
             where.append(f"message ILIKE ${i}"); args.append(f"%{query}%"); i += 1
         where_sql = " AND ".join(where) if where else "TRUE"
+
+        total = await self.fetchval(
+            f"SELECT COUNT(*) FROM syslog_messages WHERE {where_sql}", *args
+        )
         rows = await self.fetch(
             f"SELECT id, device_id, ts, facility, severity, app_name, message "
             f"FROM syslog_messages WHERE {where_sql} "
             f"ORDER BY ts DESC LIMIT ${i} OFFSET ${i+1}",
             *args, limit, offset,
         )
-        return [dict(r) for r in rows]
+        return {"items": [dict(r) for r in rows], "total": total or 0,
+                "limit": limit, "offset": offset}
+
+    async def get_log_by_id(self, log_id: int) -> dict | None:
+        row = await self.fetchrow(
+            "SELECT m.id, m.device_id, d.hostname, m.ts, m.facility, m.severity, "
+            "m.app_name, m.msgid, m.message, m.raw, m.created_at "
+            "FROM syslog_messages m JOIN devices d ON d.id = m.device_id "
+            "WHERE m.id = $1", log_id
+        )
+        return dict(row) if row else None
 
     # ── Anomalies ──
 
+    @staticmethod
+    def _anomaly_keywords(text):
+        t = text.lower()
+        t = re.sub(r'#\d+(?:[–\-]\d+)*', '', t)
+        t = re.sub(r'\d[\d:.,]*(?::\d+)?', '', t)
+        t = re.sub(r'[^\w\sа-яё-]', ' ', t)
+        words = t.split()
+        stop = {'в','на','с','и','о','по','к','у','из','от','для','не','no','the','an','a',
+                'is','as','be','or','at','to','of','in','it','with','this','that',
+                'после','при','через','без','до','за','но','же','так','для','об',
+                'его','ее','их','its','was','are','been','has','had', 'x', 'id'}
+        sig = []
+        for w in words:
+            w = w.strip('-')
+            if len(w) < 4 and not any(c in w for c in 'tcpipsipdnssshhttp'):
+                continue
+            if w in stop:
+                continue
+            sig.append(w[:20])
+        return set(sig)
+
+    @staticmethod
+    def _anomaly_msg_fingerprint(description):
+        """Extract message pattern signature from description for merge matching."""
+        if not description:
+            return ''
+        # Try quoted patterns first
+        for q in ["'", '"']:
+            i = description.find(q)
+            if i >= 0:
+                j = description.find(q, i + 1)
+                if j > i:
+                    return description[i+1:j].lower().strip()[:60]
+        # Try <...> for syslog messages
+        i = description.find('<')
+        if i >= 0:
+            j = description.find('>', i)
+            if j > i and j - i < 40:
+                rest = description[j+1:j+80].strip()
+                return rest[:60]
+        # Fallback: text before "repeated" or "повтор"
+        for marker in [' repeated', ' повтор']:
+            idx = description.lower().find(marker)
+            if idx > 10:
+                return description[max(0, idx-40):idx].strip()[:60]
+        return ''
+
     async def insert_anomaly(self, device_id: int, severity: str,
-                               title: str, description: str | None = None):
+                                title: str, description: str | None = None):
+        new_title_kw = self._anomaly_keywords(title)
+        new_desc_kw = self._anomaly_keywords(description or '')
+        new_fp = self._anomaly_msg_fingerprint(description)
+        recent = await self.fetch(
+            "SELECT id, title, description, count FROM anomalies "
+            "WHERE device_id = $1 AND last_seen > NOW() - INTERVAL '24 hours'",
+            device_id,
+        )
+        best_match = None
+        best_score = 0
+        for r in recent:
+            existing_title_kw = self._anomaly_keywords(r["title"])
+            existing_desc_kw = self._anomaly_keywords(r["description"] or '')
+            existing_fp = self._anomaly_msg_fingerprint(r["description"])
+            if not new_title_kw or not existing_title_kw:
+                continue
+            title_overlap = len(new_title_kw & existing_title_kw)
+            desc_overlap = len(new_desc_kw & existing_desc_kw)
+            title_score = title_overlap / max(len(new_title_kw), len(existing_title_kw))
+            desc_score = desc_overlap / max(len(new_desc_kw), len(existing_desc_kw)) if max(len(new_desc_kw), len(existing_desc_kw)) else 0
+            # If titles are very similar, require matching description fingerprint
+            if title_score >= 0.8 and new_fp and existing_fp and new_fp != existing_fp:
+                continue
+            score = title_score * 0.6 + desc_score * 0.4
+            if score > best_score:
+                best_score = score
+                best_match = r
+        if best_match and best_score >= 0.22:
+            mid = best_match["id"]
+            old_desc = best_match["description"] or ""
+            new_count = (best_match["count"] or 1) + 1
+            merged_desc = old_desc
+            if description and description not in old_desc and old_desc.count("\n——") < 3:
+                merged_desc = old_desc + "\n——\n" + title + "\n" + description
+            await self.execute(
+                "UPDATE anomalies SET count = $1, last_seen = NOW(), title = $2, description = $3 WHERE id = $4",
+                new_count, title, merged_desc, mid,
+            )
+            return mid
         return await self.fetchval(
-            "INSERT INTO anomalies (device_id, severity, title, description) "
-            "VALUES ($1,$2,$3,$4) RETURNING id",
+            "INSERT INTO anomalies (device_id, severity, title, description, count, last_seen) "
+            "VALUES ($1,$2,$3,$4,1,NOW()) RETURNING id",
             device_id, severity, title, description,
         )
 
     async def list_anomalies(self, device_id: int | None = None,
-                              limit: int = 50, offset: int = 0):
+                              limit: int = 50, offset: int = 0,
+                              resolved: bool | None = None):
+        # Auto-resolve stale anomalies
+        await self.execute(
+            "UPDATE anomalies SET resolved_at = NOW() "
+            "WHERE resolved_at IS NULL AND last_seen < NOW() - INTERVAL '24 hours'"
+        )
         where = "TRUE"
         args = []
         i = 1
         if device_id is not None:
-            where = f"device_id = ${i}"
+            where = f"a.device_id = ${i}"
             args.append(device_id)
             i += 1
+        if resolved is True:
+            where += f" AND a.resolved_at IS NOT NULL"
+        elif resolved is False:
+            where += f" AND a.resolved_at IS NULL"
+        total = await self.fetchval(
+            f"SELECT COUNT(*) FROM anomalies a WHERE {where}", *args
+        )
         rows = await self.fetch(
             f"SELECT a.id, a.device_id, d.hostname, a.severity, a.title, "
-            f"a.description, a.detected_at, a.resolved_at "
+            f"a.description, a.detected_at, a.resolved_at, a.count, a.last_seen "
             f"FROM anomalies a JOIN devices d ON d.id = a.device_id "
-            f"WHERE {where} ORDER BY a.detected_at DESC "
+            f"WHERE {where} ORDER BY a.last_seen DESC "
             f"LIMIT ${i} OFFSET ${i+1}",
             *args, limit, offset,
         )
-        return [dict(r) for r in rows]
+        return {"items": [dict(r) for r in rows], "total": total}
 
     # ── Summaries ──
 
     async def insert_summary(self, device_id: int, period_start, period_end,
-                               summary: str, model: str | None = None):
+                               summary: str, model: str | None = None,
+                               summary_type: str = "period"):
         return await self.fetchval(
-            "INSERT INTO summaries (device_id, period_start, period_end, summary, model) "
-            "VALUES ($1,$2,$3,$4,$5) RETURNING id",
-            device_id, period_start, period_end, summary, model,
+            "INSERT INTO summaries (device_id, period_start, period_end, summary, model, summary_type) "
+            "VALUES ($1,$2,$3,$4,$5,$6) RETURNING id",
+            device_id, period_start, period_end, summary, model, summary_type,
         )
 
     async def get_recent_summaries(self, device_id: int, limit: int = 10):
         rows = await self.fetch(
-            "SELECT id, device_id, period_start, period_end, summary, model, created_at "
+            "SELECT id, device_id, period_start, period_end, summary, model, summary_type, created_at "
             "FROM summaries WHERE device_id = $1 "
             "ORDER BY period_start DESC LIMIT $2",
             device_id, limit,
         )
+        return [dict(r) for r in rows]
+
+    async def search_summaries(self, device_id: int | None = None,
+                                 summary_type: str | None = None,
+                                 date_from=None, date_to=None,
+                                 limit: int = 20, offset: int = 0):
+        where = []
+        args = []
+        i = 1
+        if device_id is not None:
+            where.append(f"device_id = ${i}"); args.append(device_id); i += 1
+        if summary_type is not None:
+            where.append(f"summary_type = ${i}"); args.append(summary_type); i += 1
+        if date_from is not None:
+            where.append(f"period_end >= ${i}"); args.append(date_from); i += 1
+        if date_to is not None:
+            where.append(f"period_start <= ${i}"); args.append(date_to); i += 1
+        where_sql = " AND ".join(where) if where else "TRUE"
+
+        total = await self.fetchval(
+            f"SELECT COUNT(*) FROM summaries WHERE {where_sql}", *args
+        )
+        rows = await self.fetch(
+            f"SELECT id, device_id, period_start, period_end, summary, model, summary_type, created_at "
+            f"FROM summaries WHERE {where_sql} "
+            f"ORDER BY period_start DESC LIMIT ${i} OFFSET ${i+1}",
+            *args, limit, offset,
+        )
+        return {"items": [dict(r) for r in rows], "total": total or 0, "limit": limit, "offset": offset}
+
+    async def get_summaries_in_range(self, device_id: int, start, end,
+                                       summary_type: str | None = None):
+        if summary_type:
+            rows = await self.fetch(
+                "SELECT id, device_id, period_start, period_end, summary, model, summary_type, created_at "
+                "FROM summaries WHERE device_id = $1 AND summary_type = $2 "
+                "AND period_start >= $3 AND period_end <= $4 "
+                "ORDER BY period_start",
+                device_id, summary_type, start, end,
+            )
+        else:
+            rows = await self.fetch(
+                "SELECT id, device_id, period_start, period_end, summary, model, summary_type, created_at "
+                "FROM summaries WHERE device_id = $1 "
+                "AND period_start >= $2 AND period_end <= $3 "
+                "ORDER BY period_start",
+                device_id, start, end,
+            )
         return [dict(r) for r in rows]

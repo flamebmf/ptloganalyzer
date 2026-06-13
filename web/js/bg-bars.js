@@ -1,3 +1,5 @@
+// Copyright (c) 2026 PlurumTech.com
+// SPDX-License-Identifier: LicenseRef-Personal-Use-Only
 /* ============================================================
  * PlurumTech Background Bars — (C) 2024-2025 PlurumTech.com
  * Licensed under GNU GPL v3

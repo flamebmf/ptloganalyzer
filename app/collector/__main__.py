@@ -1,8 +1,11 @@
+# Copyright (c) 2026 PlurumTech.com
+# SPDX-License-Identifier: LicenseRef-Personal-Use-Only
 import asyncio
 import structlog
 
 from app.config import Config
 from app.collector.server import SyslogServer
+from app.version import APP_VERSION
 
 
 async def main():
@@ -16,7 +19,7 @@ async def main():
         log.error("collector_start_failed", error=str(e))
         raise
 
-    log.info("collector_started", port=cfg.collector_port,
+    log.info("collector_started", version=APP_VERSION, port=cfg.collector_port,
              udp=cfg.collector_udp, tcp=cfg.collector_tcp)
 
     try:

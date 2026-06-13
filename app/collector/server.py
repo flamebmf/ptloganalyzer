@@ -1,3 +1,5 @@
+# Copyright (c) 2026 PlurumTech.com
+# SPDX-License-Identifier: LicenseRef-Personal-Use-Only
 import asyncio
 import structlog
 
@@ -86,11 +88,22 @@ class SyslogServer:
         addr = writer.get_extra_info("peername")
         try:
             while self._running:
-                data = await reader.readline()
-                if not data:
+                # RFC 6584 octet-counted: "NNN <msg>" or plain newline-delimited
+                first = await reader.read(1)
+                if not first:
                     break
+                if first.isdigit():
+                    rest = await reader.readuntil(b' ')
+                    count = int(first + rest[:-1])
+                    msg = await reader.readexactly(count)
+                    data = msg.rstrip(b'\n')
+                else:
+                    rest = await reader.readuntil(b'\n')
+                    data = first + rest[:-1]
                 await self._handle_message(data, addr)
-        except (ConnectionResetError, asyncio.IncompleteReadError):
+        except (asyncio.IncompleteReadError, ConnectionResetError, asyncio.LimitOverrunError):
+            pass
+        except Exception:
             pass
         finally:
             writer.close()
@@ -134,6 +147,7 @@ class SyslogServer:
         try:
             async with self._db_pool.acquire() as conn:
                 source_ips = set(r[8] for r in batch)
+                self.log.info("batch_source_ips", ips=list(source_ips))
                 device_map = {}
                 for sip in source_ips:
                     hn = next((r[0] for r in batch if r[8] == sip), sip)
@@ -147,12 +161,25 @@ class SyslogServer:
                             hn, row["id"],
                         )
                     else:
-                        did = await conn.fetchval(
-                            "INSERT INTO devices (hostname, ip) VALUES ($1, $2::inet) RETURNING id",
-                            hn, sip,
-                        )
-                        device_map[sip] = did
+                        try:
+                            did = await conn.fetchval(
+                                "INSERT INTO devices (hostname, ip) VALUES ($1, $2::inet) RETURNING id",
+                                hn, sip,
+                            )
+                            device_map[sip] = did
+                        except Exception:
+                            row2 = await conn.fetchrow(
+                                "SELECT id FROM devices WHERE host(ip) = $1", sip
+                            )
+                            if row2:
+                                device_map[sip] = row2["id"]
+                            else:
+                                device_map[sip] = 0
 
+                skipped = [r[8] for r in batch if r[8] not in device_map]
+                if skipped:
+                    self.log.warning("batch_skip_unknown_source", ips=set(skipped),
+                                      device_map_keys=list(device_map.keys()))
                 records = [
                     (
                         device_map[r[8]], r[1], r[2], r[3],
@@ -163,13 +190,13 @@ class SyslogServer:
                 ]
 
                 if records:
-                    await conn.executemany(
-                        "INSERT INTO syslog_messages "
-                        "(device_id, ts, facility, severity, app_name, msgid, message, raw) "
-                        "VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
-                        records,
+                    await conn.copy_records_to_table(
+                        "syslog_messages",
+                        records=records,
+                        columns=["device_id","ts","facility","severity","app_name","msgid","message","raw"],
                     )
-                    self.log.info("batch_inserted", count=len(records))
+                    dev_ids = set(r[0] for r in records)
+                    self.log.info("batch_inserted", count=len(records), device_ids=list(dev_ids))
         except Exception as e:
             self.log.error("batch_insert_failed", error=str(e))
             # Re-queue failed batch to avoid data loss

@@ -8,6 +8,8 @@ venv/
 # Secrets
 .env
 *.env.local
+config.yaml
+deploy.yaml
 
 # OS
 .DS_Store
@@ -20,3 +22,10 @@ Thumbs.db
 # Generated
 /srv/
 *.kube
+*.bak
+job.md
+card.jpg
+
+# Docker
+*.tar
+*.tar.gz

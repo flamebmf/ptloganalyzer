@@ -1,6 +1,11 @@
+# ptloganalyzer — Configuration Template
+# Copyright (c) 2026 PlurumTech.com
+# SPDX-License-Identifier: LicenseRef-Personal-Use-Only
+#
+# Copy to config.yaml and adjust. Secrets are read from .env at deploy time.
+
 app:
   name: ptloganalyzer
-  version: 0.3.1
   data_dir: /srv/ptloganalyzer
   log_level: info
 
@@ -25,7 +30,7 @@ collector:
 
 ai:
   enabled: true
-  provider: routerai
+  provider: routerai  # openai | ollama | routerai
   openai:
     api_key: ${OPENAI_API_KEY}
     base_url: https://api.openai.com/v1
@@ -54,10 +59,3 @@ web:
   enabled: true
   serve_static: false
   language: ru
-
-devices:
-  - hostname: router01
-    name: Core Router
-    ip: 10.0.0.1
-    device_type: router
-    enabled: true

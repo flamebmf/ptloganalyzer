@@ -1,3 +1,5 @@
+<!-- Copyright (c) 2026 PlurumTech.com -->
+<!-- SPDX-License-Identifier: LicenseRef-Personal-Use-Only -->
 <div class="header-block">
   <h1><span data-i18n="anomalies">Аномалии</span></h1>
   <div class="header-stats">
@@ -6,52 +8,216 @@
   </div>
 </div>
 
-<div class="search-bar">
-  <select id="deviceFilter"><option value="">All devices</option></select>
-  <select id="sevFilter">
-    <option value="">Severity</option>
-    <option value="critical">Critical</option>
-    <option value="warning">Warning</option>
-    <option value="info">Info</option>
-  </select>
-  <button class="btn btn-primary btn-sm" onclick="loadAnomalies()"><i class="bi bi-arrow-clockwise"></i></button>
+<div class="chart-card">
+  <div class="tab-bar" style="display:flex;gap:0;margin-bottom:12px;border-bottom:1px solid rgba(255,255,255,.06)">
+    <button id="tabActive" class="tab-btn active" onclick="switchTab('active')">Активные</button>
+    <button id="tabResolved" class="tab-btn" onclick="switchTab('resolved')">Решённые</button>
+    <div style="flex:1"></div>
+    <button class="btn btn-sm btn-outline" id="delResolvedBtn" style="display:none;margin-bottom:6px" onclick="deleteAllResolved()"><i class="bi bi-trash"></i> Удалить все решённые</button>
+  </div>
+  <div class="search-bar">
+    <select id="deviceFilter"><option value="">All devices</option></select>
+    <button class="btn btn-primary btn-sm" onclick="loadAnomalies()"><i class="bi bi-arrow-clockwise"></i></button>
+  </div>
+  <div id="anomalyList"></div>
+  <div id="pagination" class="pagination-bar" style="display:flex;justify-content:center;gap:8px;padding:12px 0"></div>
 </div>
 
-<div id="anomalyList"></div>
+<!-- Recommendation modal -->
+<div class="modal-overlay" id="recModal" onclick="if(event.target===this)closeRecModal()" style="display:none">
+  <div class="modal-content" style="max-width:800px;width:92%">
+    <div class="modal-header">
+      <span id="recModalTitle">Рекомендация по устранению</span>
+      <button class="modal-close" onclick="closeRecModal()">&times;</button>
+    </div>
+    <div class="modal-body rec-body" id="recModalBody">Загрузка...</div>
+  </div>
+</div>
 
 <script>
+var _currentTab = 'active';
+var _pageSize = 20;
+var _currentPage = 0;
+var _totalItems = 0;
+
+function yandexLinks(text) {
+  var m = text.match(/^(.+?) · повтор/);
+  if (m) {
+    var q = encodeURIComponent(m[1]);
+    return '<a href="https://yandex.ru/search/?text=' + q + '" target="_blank" rel="noopener" class="anomaly-search-link">' + m[1] + '</a>' + text.slice(m[0].length);
+  }
+  return text;
+}
+
+function switchTab(tab) {
+  _currentTab = tab;
+  _currentPage = 0;
+  document.getElementById('tabActive').className = 'tab-btn' + (tab === 'active' ? ' active' : '');
+  document.getElementById('tabResolved').className = 'tab-btn' + (tab === 'resolved' ? ' active' : '');
+  document.getElementById('delResolvedBtn').style.display = tab === 'resolved' ? '' : 'none';
+  loadAnomalies();
+}
+
 async function loadAnomalies() {
   try {
     var deviceId = document.getElementById('deviceFilter').value;
-    var sev = document.getElementById('sevFilter').value;
-    var url = '/api/anomalies?limit=100';
+    var resolved = _currentTab === 'resolved';
+    var url = '/api/anomalies?limit=' + _pageSize + '&offset=' + (_currentPage * _pageSize) + '&resolved=' + resolved;
     if (deviceId) url += '&device_id=' + deviceId;
 
     var data = await apiGet(url);
+    _totalItems = data.total || 0;
     var list = document.getElementById('anomalyList');
-    if (data.items.length === 0) {
-      list.innerHTML = '<div class="empty-state"><div class="icon"><i class="bi bi-check-circle"></i></div><p>Аномалий не обнаружено</p></div>';
-      return;
+    if ((data.items || []).length === 0) {
+      list.innerHTML = '<div class="empty-state"><div class="icon"><i class="bi ' + (resolved ? 'bi-check-all' : 'bi-check-circle') + '"></i></div><p>' + (resolved ? 'Решённых аномалий нет' : 'Аномалий не обнаружено') + '</p></div>';
+    } else {
+      var crit = 0, warn = 0;
+      list.innerHTML = data.items.map(function(a) {
+        if (a.severity === 'critical') crit++;
+        else if (a.severity === 'warning') warn++;
+        var icon = a.severity === 'critical' ? 'bi-exclamation-triangle-fill' :
+                   a.severity === 'warning' ? 'bi-exclamation-circle-fill' : 'bi-info-circle-fill';
+        var badge = '';
+        if (a.count > 1) badge = '<span class="badge badge-err" style="margin-left:6px">x' + a.count + '</span>';
+        if (a.resolved_at) badge += '<span class="badge badge-ok" style="margin-left:6px">resolved</span>';
+        var timeStr = formatTime(a.detected_at) + (a.last_seen && a.count > 1 ? ' — ' + formatTime(a.last_seen) : '');
+        if (a.resolved_at) timeStr += ' &middot; resolved: ' + formatTime(a.resolved_at);
+        return '<div class="anomaly-item ' + (a.resolved_at ? 'resolved' : a.severity) + '">'
+          + '<div class="anomaly-icon"><i class="bi ' + icon + '"></i></div>'
+          + '<div style="flex:1">'
+          + '<div class="anomaly-title">' + a.title + badge + '</div>'
+          + (a.description ? '<div class="anomaly-desc">' + yandexLinks(convertLogIds(a.description)) + '</div>' : '')
+          + '<div class="anomaly-time">' + timeStr + (a.hostname ? ' &middot; ' + a.hostname : '') + '</div>'
+          + '<div style="margin-top:6px"><button class="btn btn-sm btn-outline" onclick="openRec(' + a.id + ',\'' + escJs(a.title) + '\')" style="font-size:.72rem"><i class="bi bi-lightbulb"></i> Что можно сделать</button></div>'
+          + '</div></div>';
+      }).join('');
+      document.getElementById('critCount').textContent = crit;
+      document.getElementById('warnCount').textContent = warn;
     }
-
-    var crit = 0, warn = 0;
-    list.innerHTML = data.items.map(function(a) {
-      if (a.severity === 'critical') crit++;
-      else if (a.severity === 'warning') warn++;
-      var icon = a.severity === 'critical' ? 'bi-exclamation-triangle-fill' :
-                 a.severity === 'warning' ? 'bi-exclamation-circle-fill' : 'bi-info-circle-fill';
-      return '<div class="anomaly-item ' + a.severity + '">'
-        + '<div class="anomaly-icon"><i class="bi ' + icon + '"></i></div>'
-        + '<div style="flex:1">'
-        + '<div class="anomaly-title">' + a.title + '</div>'
-        + (a.description ? '<div class="anomaly-desc">' + a.description + '</div>' : '')
-        + '<div class="anomaly-time">' + formatTime(a.detected_at) + (a.hostname ? ' &middot; ' + a.hostname : '') + '</div>'
-        + '</div></div>';
-    }).join('');
-
-    document.getElementById('critCount').textContent = crit;
-    document.getElementById('warnCount').textContent = warn;
+    renderPagination();
   } catch(err) { showToast('Error: '+err, 'error'); }
+}
+
+function renderPagination() {
+  var el = document.getElementById('pagination');
+  var pages = Math.ceil(_totalItems / _pageSize);
+  if (pages <= 1) { el.innerHTML = ''; return; }
+  var html = '';
+  html += '<button class="btn btn-sm btn-outline" onclick="goPage(0)"' + (_currentPage === 0 ? ' disabled' : '') + '><i class="bi bi-chevron-double-left"></i></button>';
+  html += '<button class="btn btn-sm btn-outline" onclick="goPage(' + (_currentPage - 1) + ')"' + (_currentPage === 0 ? ' disabled' : '') + '><i class="bi bi-chevron-left"></i></button>';
+  var start = Math.max(0, _currentPage - 2);
+  var end = Math.min(pages, _currentPage + 3);
+  for (var p = start; p < end; p++) {
+    html += '<button class="btn btn-sm ' + (p === _currentPage ? 'btn-primary' : 'btn-outline') + '" onclick="goPage(' + p + ')">' + (p + 1) + '</button>';
+  }
+  html += '<button class="btn btn-sm btn-outline" onclick="goPage(' + (_currentPage + 1) + ')"' + (_currentPage >= pages - 1 ? ' disabled' : '') + '><i class="bi bi-chevron-right"></i></button>';
+  html += '<button class="btn btn-sm btn-outline" onclick="goPage(' + (pages - 1) + ')"' + (_currentPage >= pages - 1 ? ' disabled' : '') + '><i class="bi bi-chevron-double-right"></i></button>';
+  el.innerHTML = html;
+}
+
+function goPage(p) {
+  _currentPage = p;
+  loadAnomalies();
+}
+
+async function deleteAllResolved() {
+  if (!confirm('Удалить все решённые аномалии? Это действие необратимо.')) return;
+  try {
+    var r = await apiDelete('/api/anomalies/resolved');
+    showToast('Удалено ' + r.deleted + ' аномалий', 'success');
+    loadAnomalies();
+  } catch(err) { showToast('Ошибка: '+err, 'error'); }
+}
+
+function escJs(s) {
+  return s.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+}
+
+function mdToHtml(text) {
+  if (!text) return '';
+  var codeBlocks = [];
+  var codeBlockId = 0;
+  // Extract code blocks first, replace with placeholders
+  text = text.replace(/```(\w*)\n([\s\S]*?)```/g, function(m, lang, code) {
+    var id = 'cb_' + (codeBlockId++);
+    codeBlocks[id] = {lang: lang || 'bash', code: code.trim()};
+    return '%%%' + id + '%%%';
+  });
+  // Escape HTML for remaining text
+  text = escHtml(text);
+  // Restore code blocks with full markup
+  for (var id in codeBlocks) {
+    var cb = codeBlocks[id];
+    var html = '<div class="code-block" id="' + id + '">'
+      + '<div class="code-block-header">'
+      + '<span>' + escHtml(cb.lang) + '</span>'
+      + '<button class="code-copy-btn" onclick="copyCode(\'' + id + '\')"><i class="bi bi-clipboard"></i></button>'
+      + '</div>'
+      + '<pre><code>' + escHtml(cb.code) + '</code></pre>'
+      + '</div>';
+    text = text.replace('%%%' + id + '%%%', html);
+  }
+  // Inline code
+  text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
+  // Headers
+  text = text.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  text = text.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  text = text.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+  // Bold/italic
+  text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  text = text.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  // Lists
+  text = text.replace(/^- (.+)/gm, '<li>$1</li>');
+  text = text.replace(/^\d+\. (.+)/gm, '<li>$1</li>');
+  text = text.replace(/\n{2,}/g, '\n');
+  text = text.replace(/\n/g, '<br>');
+  return text;
+}
+
+function copyCode(id) {
+  var block = document.getElementById(id);
+  if (!block) return;
+  var code = block.querySelector('pre code');
+  if (!code) return;
+  navigator.clipboard.writeText(code.textContent).then(function() {
+    var btn = block.querySelector('.code-copy-btn');
+    btn.innerHTML = '<i class="bi bi-check-lg"></i>';
+    setTimeout(function() { btn.innerHTML = '<i class="bi bi-clipboard"></i>'; }, 2000);
+  }).catch(function(){});
+}
+
+function openRec(id, title) {
+  var overlay = document.getElementById('recModal');
+  var body = document.getElementById('recModalBody');
+  var titleEl = document.getElementById('recModalTitle');
+  titleEl.textContent = 'Рекомендация: ' + title;
+  body.innerHTML = '<div class="modal-loading"><div class="spinner"></div><span style="color:var(--pt-muted);font-size:.8rem">Загрузка...</span></div>';
+  overlay.style.display = 'flex';
+  overlay.dataset.id = id;
+  loadRec(id);
+}
+
+function loadRec(id, refresh) {
+  var body = document.getElementById('recModalBody');
+  var params = refresh ? '?refresh=true' : '';
+  body.innerHTML = '<div class="modal-loading"><div class="spinner"></div><span style="color:var(--pt-muted);font-size:.8rem">' + (refresh ? 'Запрос к AI...' : 'Загрузка...') + '</span></div>';
+  apiPost('/api/anomalies/' + id + '/recommend' + params).then(function(r) {
+    if (r.error) {
+      body.innerHTML = '<span style="color:#ff5252">Ошибка: ' + r.error + '</span>';
+    } else {
+      body.innerHTML = mdToHtml(r.recommendation || '*Нет ответа*')
+        + '<div style="margin-top:16px;display:flex;gap:8px;align-items:center;border-top:1px solid rgba(255,255,255,.06);padding-top:12px">'
+        + '<button class="btn btn-sm btn-outline" onclick="loadRec(' + id + ',true)"><i class="bi bi-arrow-clockwise"></i> Обновить</button>'
+        + (r.cached ? '<span style="font-size:.72rem;color:var(--pt-muted)"><i class="bi bi-check-circle" style="color:var(--pt-success)"></i> из кэша</span>' : '')
+        + '</div>';
+    }
+  }).catch(function(err) {
+    body.innerHTML = '<span style="color:#ff5252">Ошибка: ' + err + '</span>';
+  });
+}
+
+function closeRecModal() {
+  document.getElementById('recModal').style.display = 'none';
 }
 
 async function initAnomalies() {
@@ -65,7 +231,7 @@ async function initAnomalies() {
       sel.appendChild(opt);
     });
   } catch(err) {}
-  loadAnomalies();
+  switchTab('active');
 }
 
 initAnomalies();

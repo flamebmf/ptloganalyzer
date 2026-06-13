@@ -1,3 +1,5 @@
+# Copyright (c) 2026 PlurumTech.com
+# SPDX-License-Identifier: LicenseRef-Personal-Use-Only
 import asyncio
 import structlog
 
@@ -28,6 +30,8 @@ class Scheduler:
         asyncio.create_task(self._loop("summarization",
                             self.cfg.summary_interval * 60,
                             self._run_summarization))
+        asyncio.create_task(self._daily_loop(
+                            self._run_daily_summarization))
         asyncio.create_task(self._loop("anomaly_detection",
                             self.cfg.anomaly_interval * 60,
                             self._run_anomaly_detection))
@@ -51,6 +55,22 @@ class Scheduler:
             except Exception as e:
                 log.error("scheduler_task_failed", task=name, error=str(e))
 
+    async def _daily_loop(self, coro):
+        # Ждём до полуночи UTC
+        import datetime
+        while self._running:
+            now = datetime.datetime.now(datetime.timezone.utc)
+            midnight = (now + datetime.timedelta(days=1)).replace(
+                hour=0, minute=0, second=0, microsecond=0)
+            wait = (midnight - now).total_seconds()
+            await asyncio.sleep(wait)
+            if not self._running:
+                break
+            try:
+                await coro()
+            except Exception as e:
+                log.error("scheduler_task_failed", task="daily_summarization", error=str(e))
+
     async def _run_all(self):
         await self._run_summarization()
         await self._run_anomaly_detection()
@@ -59,14 +79,20 @@ class Scheduler:
     async def _run_summarization(self):
         devices = await self.db.list_devices()
         for d in devices:
-            if self.cfg.ai_enabled and d["enabled"]:
+            if self.cfg.ai_enabled and d.get("ai_enabled", True):
                 await self.summarizer.run_for_device(d["id"])
+
+    async def _run_daily_summarization(self):
+        devices = await self.db.list_devices()
+        for d in devices:
+            if self.cfg.ai_enabled and d.get("ai_enabled", True):
+                await self.summarizer.run_daily_for_device(d["id"])
 
     async def _run_anomaly_detection(self):
         devices = await self.db.list_devices()
         for d in devices:
             if d["enabled"]:
-                await self.anomaly_detector.run_for_device(d["id"])
+                await self.anomaly_detector.run_for_device(d["id"], d.get("ai_enabled", True))
 
     async def _run_embeddings(self):
         if self.cfg.ai_enabled:

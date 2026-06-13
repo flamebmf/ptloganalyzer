@@ -1,3 +1,5 @@
+# Copyright (c) 2026 PlurumTech.com
+# SPDX-License-Identifier: LicenseRef-Personal-Use-Only
 import os
 from pathlib import Path
 
@@ -63,7 +65,9 @@ class Config:
         self.routerai_api_key: str = os.getenv("ROUTERAI_API_KEY", rai.get("api_key", ""))
         self.routerai_base_url: str = rai.get("base_url", "https://api.routerai.ai/v1")
         self.routerai_chat_model: str = rai.get("chat_model", "deepseek/deepseek-v4-pro")
-        self.routerai_embedding_model: str = rai.get("embedding_model", "text-embedding-3-small")
+        _raw = rai.get("embedding_model")
+        import structlog; structlog.get_logger().info("config_embed_model", raw=_raw, rai_keys=list(rai.keys()))
+        self.routerai_embedding_model: str = _raw or "openai/text-embedding-3-small"
         self.routerai_embedding_dims: int = rai.get("embedding_dims", 1536)
         summ = ai.get("summarization", {})
         self.summary_interval: int = summ.get("interval_minutes", 60)

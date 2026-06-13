@@ -1,3 +1,5 @@
+# Copyright (c) 2026 PlurumTech.com
+# SPDX-License-Identifier: LicenseRef-Personal-Use-Only
 import json
 
 import httpx
@@ -12,7 +14,7 @@ class OpenAIProvider(AIProvider):
         self.chat_model = config.openai_chat_model
         self.embed_model = config.openai_embedding_model
         self._dims = config.openai_embedding_dims
-        self._client = httpx.AsyncClient(timeout=60)
+        self._client = httpx.AsyncClient(timeout=180)
 
     @property
     def embedding_dims(self) -> int:

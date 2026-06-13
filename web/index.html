@@ -1,16 +1,18 @@
 <!DOCTYPE html>
+<!-- Copyright (c) 2026 PlurumTech.com -->
+<!-- SPDX-License-Identifier: LicenseRef-Personal-Use-Only -->
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#04070d">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📊</text></svg>">
 <title>ptloganalyzer</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <link rel="stylesheet" href="css/pt-dark.css?v=__APP_VERSION__">
-<link rel="stylesheet" href="css/ptlog.css?v=__APP_VERSION__">
 </head>
 <body>
 
@@ -49,29 +51,70 @@
 </div>
 
 <div class="chart-row">
-  <div class="chart-card full" id="dashVolumeChart" style="height:220px"></div>
-</div>
-<div class="chart-row">
-  <div class="chart-card half" id="dashSeverityChart" style="height:220px"></div>
-  <div class="chart-card half" id="dashStatsPanel" style="height:220px;overflow-y:auto">
-    <div class="card-title" style="margin-bottom:6px"><i class="bi bi-bar-chart"></i> <span>Severity</span></div>
-    <div id="dashSeverityList" style="font-size:.85rem;margin-bottom:10px"></div>
-    <div class="card-title" style="margin-bottom:6px"><i class="bi bi-app"></i> <span>Top applications</span></div>
-    <div id="dashTopApps" style="font-size:.85rem"></div>
+  <div class="chart-card full" style="height:240px;padding:14px">
+    <div class="card-title" style="margin-bottom:6px"><i class="bi bi-graph-up"></i> <span>Log volume</span></div>
+    <div id="dashVolumeChart" style="height:200px"></div>
   </div>
 </div>
 <div class="chart-row">
-  <div class="chart-card half" id="dashDeviceStats" style="height:280px;overflow-y:auto">
+  <div class="chart-card half" style="height:220px;padding:14px">
+    <div class="card-title" style="margin-bottom:6px"><i class="bi bi-exclamation-triangle"></i> <span>Anomaly trend</span></div>
+    <div id="dashAnomalyTrend" style="height:180px"></div>
+  </div>
+  <div class="chart-card half" id="dashOnlineGrid" style="height:220px;padding:14px;overflow-y:auto">
+    <div class="card-title" style="margin-bottom:10px"><i class="bi bi-hdd-stack"></i> <span>Devices</span></div>
+    <div id="dashDeviceGrid" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+  </div>
+</div>
+<div class="chart-row">
+  <div class="chart-card flex" id="dashStoragePanel" style="height:195px;overflow-y:auto">
+    <div class="card-title" style="margin-bottom:6px"><i class="bi bi-database"></i> <span>Storage</span></div>
+    <div id="dashStorageContent" style="font-size:.82rem"></div>
+  </div>
+  <div class="chart-card flex" id="dashSeverityPanel" style="height:195px;overflow-y:auto">
+    <div class="card-title" style="margin-bottom:6px"><i class="bi bi-bar-chart"></i> <span>Severity</span></div>
+    <div id="dashSeverityList" style="font-size:.82rem"></div>
+  </div>
+  <div class="chart-card flex" id="dashErrorPanel" style="height:195px;overflow-y:auto">
+    <div class="card-title" style="margin-bottom:6px"><i class="bi bi-exclamation-triangle"></i> <span>Top 5 Errors</span></div>
+    <div id="dashTopErrors" style="font-size:.82rem"></div>
+  </div>
+  <div class="chart-card flex" id="dashAppsPanel" style="height:195px;overflow-y:auto">
+    <div class="card-title" style="margin-bottom:6px"><i class="bi bi-app"></i> <span>Top applications</span></div>
+    <div id="dashTopApps" style="font-size:.82rem"></div>
+  </div>
+</div>
+<div class="chart-row">
+  <div class="chart-card half" id="dashSeverityChart" style="height:300px;padding:14px">
+    <div class="card-title" style="margin-bottom:6px"><i class="bi bi-pie-chart"></i> <span>Severity distribution</span></div>
+    <div id="dashSeverityChartInner" style="height:260px"></div>
+  </div>
+  <div class="chart-card half" id="dashDeviceStats" style="height:300px;overflow-y:auto">
     <div class="card-title" style="margin-bottom:6px"><i class="bi bi-hdd-stack"></i> <span>Logs per device</span></div>
     <div id="dashPerDevice" style="font-size:.85rem"></div>
   </div>
-  <div class="chart-card half" id="dashErrorPanel" style="height:280px;overflow-y:auto">
-    <div class="card-title" style="margin-bottom:6px"><i class="bi bi-exclamation-triangle"></i> <span>Top 5 Errors</span></div>
-    <div id="dashTopErrors" style="font-size:.85rem"></div>
+</div>
+<div class="chart-row">
+  <div class="chart-card half" id="dashLogTail" style="height:300px;overflow-y:auto;padding:14px">
+    <div class="card-title" style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+      <span><i class="bi bi-list-ul"></i> <span>Live log</span></span>
+      <span id="dashLogTailCount" style="font-size:.72rem;color:var(--pt-muted)"></span>
+    </div>
+    <div id="dashLogTailContent" style="font-size:.8rem;line-height:1.4"></div>
   </div>
 </div>
 
 
+</div>
+
+<div class="modal-overlay" id="logModal" style="display:none" onclick="if(event.target===this)closeLogModal()">
+  <div class="modal-content">
+    <div class="modal-header">
+      <span>Log #<span id="modalLogId"></span></span>
+      <button class="modal-close" onclick="closeLogModal()">&times;</button>
+    </div>
+    <div id="modalBody" style="padding:16px;font-size:.85rem;line-height:1.6"></div>
+  </div>
 </div>
 
 <footer>ptloganalyzer &copy; <span id="footerYear"></span></footer>
@@ -87,20 +130,83 @@
 <script>
 async function loadStats() {
   try {
-    const stats = await apiGet('/api/settings');
-    // Use simple counts from devices list for now
-    const devices = await apiGet('/api/devices');
-    document.getElementById('statDevices').textContent = devices.length;
-    let active = 0, total = 0;
-    for (const d of devices) {
-      const s = await apiGet(`/api/devices/${d.id}/stats`);
+    var devices = await apiGet('/api/devices');
+    var elDev = document.getElementById('statDevices');
+    if (elDev) elDev.textContent = devices.length;
+    var active = 0, total = 0;
+    for (var d of devices) {
+      var s = await apiGet('/api/devices/' + d.id + '/stats');
       total += s.total || 0;
       if (s.last_seen) active++;
     }
-    document.getElementById('statActive').textContent = active;
-    document.getElementById('statLogs').textContent = total;
-    const anomalies = await apiGet('/api/anomalies?limit=1');
-    document.getElementById('statAnomalies').textContent = anomalies.items ? anomalies.items.length : 0;
+    var elActive = document.getElementById('statActive');
+    if (elActive) elActive.textContent = active;
+    var elLogs = document.getElementById('statLogs');
+    if (elLogs) elLogs.textContent = total;
+    var anomalies = await apiGet('/api/anomalies?limit=1');
+    var elAnom = document.getElementById('statAnomalies');
+    if (elAnom) elAnom.textContent = anomalies.items ? anomalies.items.length : 0;
+  } catch(err) {}
+}
+
+async function loadStorage() {
+  try {
+    var st = await apiGet('/api/dashboard/storage');
+    var el = document.getElementById('dashStorageContent');
+    if (!el) return;
+    function fmtSize(bytes) {
+      if (!bytes) return '0 B';
+      var u = ['B','KB','MB','GB','TB'], i = 0;
+      while (bytes >= 1024 && i < u.length-1) { bytes /= 1024; i++; }
+      return bytes.toFixed(i>0?1:0) + ' ' + u[i];
+    }
+    el.innerHTML =
+      '<div class="card-stat"><span>DB size</span><span class="stat-val">' + fmtSize(st.db_size) + '</span></div>' +
+      '<div class="card-stat"><span>Total logs</span><span class="stat-val">' + (st.total_logs||0).toLocaleString() + '</span></div>' +
+      '<div class="card-stat"><span>Avg / day</span><span class="stat-val">' + (st.avg_per_day||0).toLocaleString() + '</span></div>' +
+      '<div class="card-stat"><span>Oldest log</span><span class="stat-val" style="font-size:.75rem">' + (st.oldest_log ? new Date(st.oldest_log).toLocaleString() : '-') + '</span></div>';
+  } catch(err) {}
+}
+
+async function loadDeviceGrid() {
+  try {
+    var devices = await apiGet('/api/devices');
+    var el = document.getElementById('dashDeviceGrid');
+    if (!el) return;
+    var html = '';
+    for (var d of devices) {
+      var s = await apiGet('/api/devices/' + d.id + '/stats');
+      var online = s.last_seen ? (Date.now() - new Date(s.last_seen).getTime() < 300000) : false;
+      html += '<div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:6px 10px;font-size:.75rem;display:flex;align-items:center;gap:6px">' +
+        '<span style="width:8px;height:8px;border-radius:50%;background:' + (online ? '#00e676' : '#ff5252') + '"></span>' +
+        '<span>' + (d.name || d.hostname) + '</span>' +
+        '<span style="color:var(--pt-muted)">' + (s.total||0) + '</span>' +
+        '</div>';
+    }
+    el.innerHTML = html || '<span style="color:var(--pt-muted)">No devices</span>';
+  } catch(err) {}
+}
+
+async function loadLogTail() {
+  try {
+    var data = await apiGet('/api/dashboard/logtail?limit=20');
+    var el = document.getElementById('dashLogTailContent');
+    var countEl = document.getElementById('dashLogTailCount');
+    if (!el) return;
+    var labels = ['Emerg','Alert','Crit','Err','Warning','Notice','Info','Debug'];
+    var sevColors = ['#ff1744','#ff5252','#d50000','#ff9100','#ffd740','#00e676','#00d4ff','#7a8294'];
+    if (countEl) countEl.textContent = data.items.length + ' messages';
+    el.innerHTML = data.items.map(function(m) {
+      var sev = m.severity !== null && m.severity !== undefined ? m.severity : 6;
+      var label = labels[sev] || '?';
+      var color = sevColors[sev] || '#7a8294';
+      return '<div style="display:flex;gap:8px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.03)">' +
+        '<span style="white-space:nowrap;color:var(--pt-muted);font-size:.72rem">' + new Date(m.ts).toLocaleTimeString() + '</span>' +
+        '<span style="white-space:nowrap;color:' + color + ';font-weight:700;font-size:.72rem">' + label + '</span>' +
+        '<span style="white-space:nowrap;color:var(--pt-muted);font-size:.72rem;min-width:60px">' + escHtml(m.device) + '</span>' +
+        '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--pt-text)">' + escHtml(m.message || '') + '</span>' +
+        '</div>';
+    }).join('') || '<span style="color:var(--pt-muted)">No messages</span>';
   } catch(err) {}
 }
 
@@ -108,22 +214,32 @@ async function loadDashboardCharts() {
   try {
     const data = await apiGet('/api/dashboard/history');
     const volData = data.volume.map(d => ({ hour: d.hour, count: d.count }));
-    if (document.getElementById('dashVolumeChart').children.length < 2) {
-      createLogVolumeChart('dashVolumeChart', volData);
+    const volYesterday = data.volume_yesterday.map(d => ({ hour: d.hour, count: d.count }));
+    var volChart = document.getElementById('dashVolumeChart');
+    if (volChart && volChart.children.length < 2) {
+      createLogVolumeChart('dashVolumeChart', volData, volYesterday);
+    }
+    const anomalyTrend = data.anomaly_trend.map(d => ({ hour: d.hour, count: d.count }));
+    var anomalyEl = document.getElementById('dashAnomalyTrend');
+    if (anomalyEl && anomalyEl.children.length < 2) {
+      createAnomalyTrendChart('dashAnomalyTrend', anomalyTrend);
     }
     const sevData = data.severity.map(d => ({ severity: d.severity, count: d.count }));
-    if (document.getElementById('dashSeverityChart').children.length < 2) {
-      createSeverityChart('dashSeverityChart', sevData);
+    const sevChart = document.getElementById('dashSeverityChartInner');
+    if (sevChart && sevChart.children.length < 2) {
+      createSeverityChart('dashSeverityChartInner', sevData);
     }
     const labels = ['Emerg','Alert','Crit','Err','Warning','Notice','Info','Debug'];
-    const colors = ['#ff1744','#ff5252','#ffd740','#00e676','#00d4ff','#7a8294'];
-    document.getElementById('dashSeverityList').innerHTML = data.severity.map(d => `
+    const colors = ['#ff1744','#ff5252','#d50000','#ff9100','#ffd740','#00e676','#00d4ff','#7a8294'];
+    const sevList = document.getElementById('dashSeverityList');
+    if (sevList) sevList.innerHTML = data.severity.map(d => `
       <div style="display:flex;justify-content:space-between;padding:3px 0">
         <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${colors[d.severity]||'#7a8294'};margin-right:8px"></span>${labels[d.severity]||d.severity}</span>
         <span class="stat-val">${d.count}</span>
       </div>
     `).join('');
-    document.getElementById('dashTopErrors').innerHTML = data.top_errors.length
+    const topErrs = document.getElementById('dashTopErrors');
+    if (topErrs) topErrs.innerHTML = data.top_errors.length
       ? data.top_errors.map(d => `
         <div style="display:flex;justify-content:space-between;padding:3px 0">
           <span><i class="bi bi-dot" style="color:#ff5252"></i>${d.hostname}</span>
@@ -131,7 +247,8 @@ async function loadDashboardCharts() {
         </div>
       `).join('')
       : '<span style="color:var(--pt-muted)">No errors in 24h</span>';
-    document.getElementById('dashPerDevice').innerHTML = data.per_device.map(d => {
+    const perDev = document.getElementById('dashPerDevice');
+    if (perDev) perDev.innerHTML = data.per_device.map(d => {
       const pct = data.total ? Math.round(d.count / data.total * 100) : 0;
       return `
         <div style="margin-bottom:6px">
@@ -145,7 +262,8 @@ async function loadDashboardCharts() {
         </div>
       `;
     }).join('');
-    document.getElementById('dashTopApps').innerHTML = data.top_apps.map(d => `
+    const topApps = document.getElementById('dashTopApps');
+    if (topApps) topApps.innerHTML = data.top_apps.map(d => `
       <div style="display:flex;justify-content:space-between;padding:3px 0;font-size:.85rem">
         <span>${d.app_name}</span>
         <span class="stat-val">${d.count}</span>
@@ -158,10 +276,18 @@ async function loadDashboardCharts() {
 
 window.pageLoaded = function() {
   loadStats();
+  loadStorage();
+  loadDeviceGrid();
+  loadLogTail();
 };
 
 loadStats();
-loadDashboardCharts();
+loadStorage();
+loadDeviceGrid();
+loadLogTail();
+if (!window.location.hash || window.location.hash === '#index.html') {
+  loadDashboardCharts();
+}
 </script>
 </body>
 </html>

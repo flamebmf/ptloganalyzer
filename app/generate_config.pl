@@ -1,4 +1,6 @@
 #!/usr/bin/env perl
+# Copyright (c) 2026 PlurumTech.com
+# SPDX-License-Identifier: LicenseRef-Personal-Use-Only
 use strict;
 use warnings;
 use File::Basename;

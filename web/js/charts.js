@@ -1,8 +1,10 @@
+// Copyright (c) 2026 PlurumTech.com
+// SPDX-License-Identifier: LicenseRef-Personal-Use-Only
 var ptChartTheme = ptChartTheme || {
   color: ['#00d4ff','#7b61ff','#00e676','#ffd740','#ff5252'],
   tooltip: {
     theme: 'dark',
-    x: { show: true },
+    x: { show: true, format: 'dd.MM HH:mm' },
     style: { fontSize: '12px', fontFamily: 'Roboto' }
   },
   grid: {
@@ -25,17 +27,25 @@ var ptChartTheme = ptChartTheme || {
   }
 };
 
-function createLogVolumeChart(elId, data) {
+function createLogVolumeChart(elId, data, dataYesterday) {
+  var series = [{
+    name: 'Today',
+    data: data.map(d => ({ x: d.hour, y: d.count }))
+  }];
+  if (dataYesterday && dataYesterday.length) {
+    series.push({
+      name: 'Yesterday',
+      data: dataYesterday.map(d => ({ x: d.hour, y: d.count }))
+    });
+  }
   var options = {
     ...ptChartTheme,
     chart: { type: 'area', height: 200, toolbar: { show: false },
              background: 'transparent', foreColor: '#7a8294',
              fontFamily: 'Roboto' },
-    series: [{
-      name: 'Logs',
-      data: data.map(d => ({ x: d.hour, y: d.count }))
-    }],
-    stroke: { curve: 'smooth', width: 2, colors: ['#00d4ff'] },
+    series: series,
+    stroke: { curve: 'smooth', width: 2 },
+    colors: ['#00d4ff', 'rgba(122,130,148,.4)'],
     fill: {
       type: 'gradient',
       gradient: { shadeIntensity: 1, opacityFrom: 0.3, opacityTo: 0 }
@@ -58,8 +68,43 @@ function createLogVolumeChart(elId, data) {
   return chart;
 }
 
+function createAnomalyTrendChart(elId, data) {
+  var options = {
+    ...ptChartTheme,
+    chart: { type: 'bar', height: 180, toolbar: { show: false },
+             background: 'transparent', foreColor: '#7a8294',
+             fontFamily: 'Roboto', sparkline: { enabled: false } },
+    series: [{
+      name: 'Anomalies',
+      data: data.map(d => ({ x: d.hour, y: d.count }))
+    }],
+    colors: ['#ff5252'],
+    plotOptions: {
+      bar: { columnWidth: '60%', borderRadius: 2, distributed: false }
+    },
+    dataLabels: { enabled: false },
+    xaxis: {
+      type: 'datetime',
+      labels: {
+        datetimeUTC: false,
+        format: 'HH:00',
+        style: { colors: '#7a8294', fontSize: '10px', fontFamily: 'Roboto' }
+      },
+      axisBorder: { show: false },
+      axisTicks: { show: false }
+    },
+    yaxis: {
+      labels: { style: { colors: '#7a8294', fontSize: '10px', fontFamily: 'Roboto' } },
+      forceNiceScale: true
+    }
+  };
+  const chart = new ApexCharts(document.getElementById(elId), options);
+  chart.render();
+  return chart;
+}
+
 function createSeverityChart(elId, data) {
-  const colors = ['#ff1744','#ff5252','#ffd740','#00e676','#00d4ff','#7a8294'];
+  const colors = ['#ff1744','#ff5252','#d50000','#ff9100','#ffd740','#00e676','#00d4ff','#7a8294'];
   const labels = ['Emerg','Alert','Crit','Error','Warning','Notice','Info','Debug'];
   const filtered = data.filter(d => d.count > 0);
 

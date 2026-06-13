@@ -1,73 +1,212 @@
+<!-- Copyright (c) 2026 PlurumTech.com -->
+<!-- SPDX-License-Identifier: LicenseRef-Personal-Use-Only -->
 <div class="header-block">
   <h1><span data-i18n="settings">Настройки</span></h1>
 </div>
 
 <div class="chart-row">
   <div class="chart-card half">
-    <div class="card-title" style="margin-bottom:16px"><i class="bi bi-info-circle"></i> <span data-i18n="settings">Настройки системы</span></div>
+    <div class="card-title" style="margin-bottom:16px"><i class="bi bi-info-circle"></i> Система</div>
     <div class="settings-form" id="appInfo"></div>
+    <div class="settings-form" style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.06)">
+      <label><i class="bi bi-translate"></i> Язык интерфейса</label>
+      <select id="langSelect" onchange="changeLang()">
+        <option value="ru">Русский</option>
+        <option value="en">English</option>
+      </select>
+      <button class="btn btn-primary btn-sm" onclick="saveLang()" style="margin-top:4px"><i class="bi bi-check-lg"></i> Сохранить</button>
+    </div>
   </div>
   <div class="chart-card half">
-    <div class="card-title" style="margin-bottom:16px"><i class="bi bi-hdd-stack"></i> <span data-i18n="devices">Устройства</span></div>
-    <div id="deviceList"></div>
+    <div class="card-title" style="margin-bottom:16px"><i class="bi bi-stars"></i> AI провайдер</div>
+    <div class="settings-form" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+      <select id="aiProvider" onchange="showProviderFields()" style="width:auto">
+        <option value="ollama">Ollama</option>
+        <option value="openai">OpenAI</option>
+        <option value="routerai">RouterAI</option>
+      </select>
+      <span id="aiStatus" class="badge"></span>
+      <button class="btn btn-primary btn-sm" onclick="saveProvider()"><i class="bi bi-check-lg"></i> Применить</button>
+    </div>
+    <div id="aiProviderFields" class="settings-form" style="margin-bottom:12px"></div>
+    <small style="color:var(--pt-muted)">Смена AI провайдера требует перезапуска AI-воркера.</small>
   </div>
 </div>
 
 <div class="chart-card" style="margin-top:14px">
-  <div class="card-title" style="margin-bottom:16px"><i class="bi bi-stars"></i> <span data-i18n="ai_provider">AI провайдер</span></div>
-  <div class="settings-form" id="aiInfo"></div>
+  <div class="card-title" style="margin-bottom:16px"><i class="bi bi-hdd-stack"></i> Устройства</div>
+  <div class="device-grid" id="deviceList"></div>
 </div>
 
 <script>
+var _currentProvider = '';
+
 async function loadSettings() {
   try {
     var settings = await apiGet('/api/settings');
-    document.getElementById('appInfo').innerHTML =
-      '<label>App</label>'
-      + '<input type="text" value="' + settings.app.name + ' v' + settings.app.version + '" readonly style="width:100%;margin-bottom:16px">'
-      + '<label>Collector</label>'
-      + '<input type="text" value="Port ' + settings.collector.port + ' | ' + (settings.collector.enabled ? 'Enabled' : 'Disabled') + '" readonly style="width:100%;margin-bottom:16px">'
-      + '<label>Language</label>'
-      + '<select id="langSelect" onchange="changeLang()" style="width:100%;margin-bottom:16px">'
-      + '<option value="ru" ' + (settings.web.language === 'ru' ? 'selected' : '') + '>Русский</option>'
-      + '<option value="en" ' + (settings.web.language === 'en' ? 'selected' : '') + '>English</option>'
-      + '</select>'
-      + '<label>Version</label>'
-      + '<input type="text" value="' + settings.app.version + '" readonly style="width:100%">';
+    _currentProvider = settings.ai.provider;
 
-    document.getElementById('aiInfo').innerHTML =
-      '<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">'
-      + '<span class="badge ' + (settings.ai.enabled ? 'badge-ok' : 'badge-warn') + '">' + (settings.ai.enabled ? 'Enabled' : 'Disabled') + '</span>'
-      + '<span>Provider: <strong>' + settings.ai.provider + '</strong></span>'
-      + '</div>'
-      + '<label>Summarization interval</label>'
-      + '<input type="text" value="' + settings.ai.summarization_interval + ' minutes" readonly style="width:100%;margin-bottom:12px">'
-      + '<label>Anomaly detection interval</label>'
-      + '<input type="text" value="' + settings.ai.anomaly_interval + ' minutes" readonly>';
-  } catch(err) { showToast('Error: '+err, 'error'); }
+    document.getElementById('appInfo').innerHTML =
+      '<label>Приложение</label>'
+      + '<input type="text" value="' + settings.app.name + ' v' + settings.app.version + '" readonly style="width:100%;margin-bottom:16px">'
+      + '<label>Коллектор</label>'
+      + '<input type="text" value="Порт ' + settings.collector.port + ' | ' + (settings.collector.enabled ? 'Включён' : 'Выключен') + '" readonly style="width:100%;margin-bottom:16px">'
+      + '<label>AI суммаризация</label>'
+      + '<input type="text" value="Интервал: ' + settings.ai.summarization_interval + ' мин" readonly style="width:100%;margin-bottom:12px">'
+      + '<label>Детекция аномалий</label>'
+      + '<input type="text" value="Интервал: ' + settings.ai.anomaly_interval + ' мин" readonly>';
+
+    document.getElementById('langSelect').value = settings.web.language;
+    document.getElementById('aiProvider').value = settings.ai.provider;
+    updateAiStatus(settings.ai);
+    showProviderFields();
+  } catch(err) { showToast('Ошибка: '+err, 'error'); }
+}
+
+function updateAiStatus(ai) {
+  var st = document.getElementById('aiStatus');
+  if (!ai.enabled) {
+    st.className = 'badge badge-warn'; st.textContent = 'Выключен';
+  } else {
+    st.className = 'badge badge-ok'; st.textContent = ai.provider;
+  }
+}
+
+function showProviderFields() {
+  var p = document.getElementById('aiProvider').value;
+  var el = document.getElementById('aiProviderFields');
+  var fields = {
+    openai: '<label>URL</label><input id="aiOpenaiUrl" style="width:100%;margin-bottom:12px">'
+      + '<label>Chat модель</label><input id="aiOpenaiModel" style="width:100%;margin-bottom:12px">'
+      + '<label>API ключ (только чтение)</label><input id="aiOpenaiKey" readonly style="width:100%">',
+    routerai: '<label>URL</label><input id="aiRouteraiUrl" style="width:100%;margin-bottom:12px">'
+      + '<label>Chat модель</label><input id="aiRouteraiModel" style="width:100%;margin-bottom:12px">'
+      + '<label>API ключ (только чтение)</label><input id="aiRouteraiKey" readonly style="width:100%">',
+    ollama: '<label>URL</label><input id="aiOllamaUrl" style="width:100%;margin-bottom:12px">'
+      + '<label>Chat модель</label><input id="aiOllamaModel" style="width:100%">'
+  };
+  el.innerHTML = fields[p] || '';
+
+  try {
+    apiGet('/api/settings').then(function(s) {
+      if (document.getElementById('aiOpenaiUrl')) document.getElementById('aiOpenaiUrl').value = s.ai.openai.url;
+      if (document.getElementById('aiOpenaiModel')) document.getElementById('aiOpenaiModel').value = s.ai.openai.model;
+      if (document.getElementById('aiOpenaiKey')) document.getElementById('aiOpenaiKey').value = s.ai.openai.has_key ? '*** задан ***' : 'нет';
+      if (document.getElementById('aiRouteraiUrl')) document.getElementById('aiRouteraiUrl').value = s.ai.routerai.url;
+      if (document.getElementById('aiRouteraiModel')) document.getElementById('aiRouteraiModel').value = s.ai.routerai.model;
+      if (document.getElementById('aiRouteraiKey')) document.getElementById('aiRouteraiKey').value = s.ai.routerai.has_key ? '*** задан ***' : 'нет';
+      if (document.getElementById('aiOllamaUrl')) document.getElementById('aiOllamaUrl').value = s.ai.ollama.url;
+      if (document.getElementById('aiOllamaModel')) document.getElementById('aiOllamaModel').value = s.ai.ollama.model;
+    });
+  } catch(e) {}
+}
+
+async function saveProvider() {
+  var p = document.getElementById('aiProvider').value;
+  if (p !== _currentProvider) {
+    try {
+      var r = await apiPatch('/api/settings', {ai_provider: p});
+      _currentProvider = p;
+      showToast('Провайдер сменён на ' + p + (r.ai_restart_required ? '. Перезапустите AI-воркер.' : ''), 'success');
+    } catch(err) { showToast('Ошибка: '+err, 'error'); }
+  } else {
+    showToast('Провайдер не изменился', 'info');
+  }
+}
+
+async function saveLang() {
+  var lang = document.getElementById('langSelect').value;
+  try {
+    await apiPatch('/api/settings', {language: lang});
+    showToast('Язык сохранён: ' + lang, 'success');
+  } catch(err) { showToast('Ошибка: '+err, 'error'); }
+}
+
+function changeLang() {
+  // Just preview, save on button click
 }
 
 async function loadDevices() {
   try {
     var devices = await apiGet('/api/devices');
     var el = document.getElementById('deviceList');
-    el.innerHTML = devices.map(function(d) {
-      return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04)">'
-        + '<div><strong>' + d.hostname + '</strong>' + (d.ip ? ' <span style="color:var(--pt-muted)">(' + d.ip + ')</span>' : '')
-        + (d.name ? '<br><small style="color:var(--pt-muted)">' + d.name + '</small>' : '')
+    var html = '';
+    for (var d of devices) {
+      var stats = await apiGet('/api/devices/' + d.id + '/stats');
+      var safeName = (d.name || d.hostname).replace(/'/g,"\\'");
+      var cardTitle = d.name || d.hostname;
+      html += '<div class="card-dash">'
+        + '<div class="card-header">'
+        + '<div class="card-title">' + cardTitle + (d.ip ? ' <span style="color:var(--pt-muted);font-weight:400;font-size:.8rem">(' + d.ip + ')</span>' : '') + '</div>'
+        + '<span class="' + (stats.last_seen ? 'online' : 'offline') + '"><i class="bi bi-circle-fill" style="font-size:.6rem"></i> ' + (stats.last_seen ? 'online' : 'offline') + '</span>'
+        + '</div><div class="card-body">'
+        + '<div style="display:flex;gap:4px;align-items:center;margin-bottom:4px">'
+        + '<input id="devName_' + d.id + '" value="' + (d.name || '') + '" placeholder="' + (d.name && d.hostname ? d.hostname : cardTitle) + (d.ip && !d.name ? ' (' + d.ip + ')' : '') + '" style="flex:1;font-weight:700;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:6px;padding:4px 8px;color:var(--pt-text);font-size:.8rem;outline:none">'
+        + '<button class="btn btn-sm btn-primary" onclick="saveDeviceName(' + d.id + ')" title="Сохранить имя" style="padding:2px 6px;font-size:.75rem"><i class="bi bi-check-lg"></i></button>'
         + '</div>'
-        + '<span class="badge ' + (d.enabled ? 'badge-ok' : 'badge-warn') + '">' + (d.enabled ? 'ON' : 'OFF') + '</span>'
+        + '<div class="card-stat"><span>Logs / 24h</span> <span class="stat-val">' + (stats.total || 0) + '</span></div>'
+        + '<div class="card-stat"><span>' + (d.ip || '') + ' &middot; ' + (d.device_type || 'other') + '</span></div>'
+        + '</div>'
+        + '<div style="display:flex;gap:4px;padding:4px 8px 6px;flex-wrap:wrap">'
+        + '<button id="devAi_' + d.id + '" class="btn btn-sm ' + (d.ai_enabled !== false ? 'btn-primary' : 'btn-outline') + '" onclick="toggleDeviceAi(' + d.id + ',' + (d.ai_enabled !== false ? 'false' : 'true') + ')" title="AI анализ" style="padding:2px 6px;font-size:.75rem"><i class="bi bi-stars"></i></button>'
+        + '<button id="devToggle_' + d.id + '" class="btn btn-sm ' + (d.enabled ? 'btn-primary' : 'btn-outline') + '" onclick="toggleDevice(' + d.id + ',' + (d.enabled ? 'false' : 'true') + ')" style="padding:2px 6px;font-size:.75rem">' + (d.enabled ? 'ON' : 'OFF') + '</button>'
+        + '<button class="btn btn-sm btn-outline" onclick="clearDeviceLogs(' + d.id + ',\'' + safeName + '\')" title="Очистить логи" style="padding:2px 6px;font-size:.75rem"><i class="bi bi-eraser"></i></button>'
+        + '<button class="btn btn-sm btn-danger" onclick="deleteDevice(' + d.id + ',\'' + safeName + '\')" title="Удалить устройство" style="padding:2px 6px;font-size:.75rem"><i class="bi bi-trash"></i></button>'
+        + '</div>'
         + '</div>';
-    }).join('');
-    if (devices.length === 0) {
-      el.innerHTML = '<div class="empty-state"><p>Нет устройств. Добавьте через config.yaml.</p></div>';
     }
+    if (devices.length === 0) {
+      html = '<div class="empty-state" style="grid-column:1/-1"><p>Нет устройств. Добавьте через config.yaml.</p></div>';
+    }
+    el.innerHTML = html;
   } catch(err) {}
 }
 
-function changeLang() {
-  var lang = document.getElementById('langSelect').value;
-  showToast('Language changed to ' + lang, 'success');
+async function toggleDevice(id, enable) {
+  try {
+    await apiPatch('/api/devices/' + id, {enabled: enable});
+    var btn = document.getElementById('devToggle_' + id);
+    btn.textContent = enable ? 'ON' : 'OFF';
+    btn.className = 'btn btn-sm ' + (enable ? 'btn-primary' : 'btn-outline');
+    btn.setAttribute('onclick', 'toggleDevice(' + id + ',' + !enable + ')');
+    showToast('Устройство ' + (enable ? 'включено' : 'выключено'), 'success');
+  } catch(err) { showToast('Ошибка: '+err, 'error'); }
+}
+
+async function toggleDeviceAi(id, enable) {
+  try {
+    await apiPatch('/api/devices/' + id, {ai_enabled: enable});
+    var btn = document.getElementById('devAi_' + id);
+    btn.className = 'btn btn-sm ' + (enable ? 'btn-primary' : 'btn-outline');
+    btn.setAttribute('onclick', 'toggleDeviceAi(' + id + ',' + !enable + ')');
+    showToast('AI анализ ' + (enable ? 'включён' : 'выключен') + ' для устройства', 'success');
+  } catch(err) { showToast('Ошибка: '+err, 'error'); }
+}
+
+async function saveDeviceName(id) {
+  var el = document.getElementById('devName_' + id);
+  try {
+    await apiPatch('/api/devices/' + id, {name: el.value || null});
+    showToast('Имя сохранено', 'success');
+    loadDevices();
+  } catch(err) { showToast('Ошибка: '+err, 'error'); }
+}
+
+async function clearDeviceLogs(id, name) {
+  if (!confirm('Очистить все логи устройства "' + name + '" (' + id + ')? Эмбеддинги и суммаризации тоже будут удалены. Устройство останется.')) return;
+  try {
+    var r = await apiPost('/api/devices/' + id + '/clear-logs');
+    showToast('Логи "' + name + '" очищены: ' + (r.deleted || 0) + ' записей', 'success');
+  } catch(err) { showToast('Ошибка: '+err, 'error'); }
+}
+
+async function deleteDevice(id, name) {
+  if (!confirm('Удалить устройство "' + name + '" и все его логи (' + id + ')? Это действие необратимо.')) return;
+  try {
+    await apiDelete('/api/devices/' + id);
+    showToast('Устройство "' + name + '" удалено', 'success');
+    loadDevices();
+  } catch(err) { showToast('Ошибка: '+err, 'error'); }
 }
 
 loadSettings();
