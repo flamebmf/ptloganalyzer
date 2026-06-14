@@ -1,8 +1,8 @@
 # ptloganalyzer
 
-> **Version 0.7.0** — Self-hosted syslog analysis platform with AI-powered summarization, anomaly detection, and device-specific log parsing.
+> **Version 0.7.3** — Self-hosted syslog analysis platform with AI-powered summarization, anomaly detection, and device-specific log parsing.
 
-Collect syslogs from network devices (routers, switches, firewalls, access points), parse them with device-specific templates, and get structured AI analysis in Russian — hourly summaries, daily reports, and real-time anomaly alerts.
+Collect syslogs from network devices (routers, switches, firewalls, access points), parse them with device-specific templates, and get structured AI analysis in Russian or English — hourly summaries, daily reports, and real-time anomaly alerts.
 
 ---
 
@@ -63,7 +63,7 @@ Collect syslogs from network devices (routers, switches, firewalls, access point
 - **`aruba_iap`** — Aruba Instant Access Point parser (extracts AP name from message body)
 - Extensible via `PARSERS` dict in `parser.py` — add custom regex templates per device
 
-### AI Analysis (in Russian)
+### AI Analysis (in Russian / English)
 
 | Type | Interval | Description |
 |------|----------|-------------|
@@ -101,7 +101,7 @@ Collect syslogs from network devices (routers, switches, firewalls, access point
 
 ```bash
 # Clone
-git clone https://github.com/plurumtech/ptloganalyzer.git
+git clone https://github.com/flamebmf/ptloganalyzer.git
 cd ptloganalyzer
 
 # Install dependencies
@@ -120,7 +120,7 @@ perl setup.pl --update=ai     # AI worker + web files
 
 ```bash
 # Clone config + web files only
-git clone https://github.com/plurumtech/ptloganalyzer.git
+git clone https://github.com/flamebmf/ptloganalyzer.git
 cd ptloganalyzer
 pip install -r requirements.txt
 
@@ -209,7 +209,7 @@ Open `http://localhost:8000` (or configured API port).
 | `GET` | `/api/summaries` | List summaries by device |
 | `GET` | `/api/anomalies` | List anomalies |
 | `GET` | `/api/settings` | Get settings |
-| `PATCH` | `/api/settings` | Update settings (ai_provider, language) |
+| `PATCH` | `/api/settings` | Update settings (ai_provider, language, ai_language) |
 | `GET` | `/api/dashboard/history` | Dashboard aggregate data (volume, severity, per-device, anomaly trend, today vs yesterday) |
 | `GET` | `/api/dashboard/storage` | Database size, total logs, avg/day, oldest log |
 | `GET` | `/api/dashboard/logtail` | Last N log messages with device info |
