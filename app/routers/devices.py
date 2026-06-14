@@ -109,29 +109,29 @@ async def update_device(device_id: int, data: DeviceUpdate):
 @router.get("/devices/{device_id}/history")
 async def device_history(device_id: int):
     volume = await db.fetch(
-        "SELECT date_trunc('hour', ts) AS hour, COUNT(*) AS count "
-        "FROM syslog_messages "
-        "WHERE device_id = $1 AND ts > NOW() - INTERVAL '48 hours' "
+        "SELECT hour, SUM(count)::int AS count "
+        "FROM log_stats_hourly "
+        "WHERE device_id = $1 AND hour > date_trunc('hour', NOW() - INTERVAL '48 hours') "
         "GROUP BY hour ORDER BY hour",
         device_id,
     )
     severity = await db.fetch(
-        "SELECT severity, COUNT(*) AS count "
-        "FROM syslog_messages "
-        "WHERE device_id = $1 AND ts > NOW() - INTERVAL '48 hours' "
+        "SELECT severity, SUM(count)::int AS count "
+        "FROM log_stats_hourly "
+        "WHERE device_id = $1 AND hour > date_trunc('hour', NOW() - INTERVAL '48 hours') "
         "GROUP BY severity ORDER BY severity",
         device_id,
     )
-    sev_timeline_raw = await db.fetch(
-        "SELECT date_trunc('hour', ts) AS hour, severity, COUNT(*) AS count "
-        "FROM syslog_messages "
-        "WHERE device_id = $1 AND ts > NOW() - INTERVAL '24 hours' "
-        "GROUP BY hour, severity ORDER BY hour, severity",
+    sev_timeline = await db.fetch(
+        "SELECT hour, severity, count "
+        "FROM log_stats_hourly "
+        "WHERE device_id = $1 AND hour > date_trunc('hour', NOW() - INTERVAL '24 hours') "
+        "ORDER BY hour, severity",
         device_id,
     )
     sev_labels = ['Emerg','Alert','Crit','Err','Warning','Notice','Info','Debug']
     buckets = {}
-    for r in sev_timeline_raw:
+    for r in sev_timeline:
         h = r["hour"].isoformat() if hasattr(r["hour"], 'isoformat') else str(r["hour"])
         if h not in buckets:
             buckets[h] = {s: 0 for s in range(8)}
