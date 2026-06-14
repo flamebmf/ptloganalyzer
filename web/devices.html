@@ -34,11 +34,12 @@ async function loadDevices() {
       var chartId = 'miniChart_' + d.id;
       var cardTitle = d.name || d.hostname;
       var cardSub = d.name ? d.hostname : '';
+      var ipLine = d.ip ? '<span style="color:var(--pt-muted);font-weight:400;font-size:.75rem">' + d.ip + '</span>' : '';
       html += '<div class="card-dash" id="card_' + d.id + '" style="cursor:pointer">'
         + '<div onclick="loadPage(\'device.html?id=' + d.id + '\')">'
         + '<div class="card-header">'
-        + '<div class="card-title">' + cardTitle + (d.ip ? ' <span style="color:var(--pt-muted);font-weight:400;font-size:.8rem">(' + d.ip + ')</span>' : '') + '</div>'
-        + '<span class="card-status ' + status + '"><i class="bi bi-circle-fill" style="font-size:.6rem"></i> ' + status + '</span>'
+        + '<div class="card-title"><div>' + cardTitle + '</div>' + (ipLine ? '<div style="margin-top:2px">' + ipLine + '</div>' : '') + '</div>'
+        + '<span class="card-status ' + status + '" style="align-self:flex-start;flex-shrink:0;margin-left:8px"><i class="bi bi-circle-fill" style="font-size:.6rem"></i> ' + status + '</span>'
         + '</div><div class="card-body">'
         + (cardSub ? '<div><span style="color:var(--pt-muted)">' + cardSub + '</span></div>' : '')
         + '<div class="card-stat"><span data-i18n="last_seen">Последний раз</span> <span class="card-lastseen">' + lastSeen + '</span></div>'

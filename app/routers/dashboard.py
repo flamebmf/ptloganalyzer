@@ -112,16 +112,11 @@ async def dashboard_storage():
         "SELECT COUNT(*) / NULLIF(EXTRACT(DAY FROM NOW() - MIN(ts)), 0) "
         "FROM syslog_messages"
     )
-    total_24h = await db.fetchval(
-        "SELECT COALESCE(SUM(count), 0) FROM log_stats_hourly "
-        "WHERE hour > date_trunc('hour', NOW() - INTERVAL '24 hours')"
-    )
     return {
         "db_size": db_size or 0,
         "total_logs": total_logs or 0,
         "oldest_log": oldest.isoformat() if oldest else None,
         "avg_per_day": round(avg_per_day or 0),
-        "avg_per_hour": round((total_24h or 0) / 24.0),
     }
 
 
