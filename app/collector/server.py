@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: LicenseRef-Personal-Use-Only
 import asyncio
 import structlog
+from collections import Counter
+from datetime import datetime, timezone
 
 from app.config import Config
 from app.collector.parser import parse_syslog
@@ -195,6 +197,21 @@ class SyslogServer:
                         records=records,
                         columns=["device_id","ts","facility","severity","app_name","msgid","message","raw"],
                     )
+                    # Update hourly stats
+                    stats_counter = Counter()
+                    for r in records:
+                        hour = r[1].replace(minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
+                        if hour.tzinfo is None:
+                            hour = hour.replace(tzinfo=timezone.utc)
+                        stats_counter[(r[0], hour, r[3])] += 1
+                    if stats_counter:
+                        await conn.executemany(
+                            "INSERT INTO log_stats_hourly (device_id, hour, severity, count) "
+                            "VALUES ($1, $2, $3, $4) "
+                            "ON CONFLICT (device_id, hour, severity) "
+                            "DO UPDATE SET count = log_stats_hourly.count + EXCLUDED.count",
+                            [(k[0], k[1], k[2], v) for k, v in stats_counter.items()],
+                        )
                     dev_ids = set(r[0] for r in records)
                     self.log.info("batch_inserted", count=len(records), device_ids=list(dev_ids))
         except Exception as e:

@@ -12,69 +12,68 @@ router = APIRouter(tags=["dashboard"])
 @router.get("/dashboard/history")
 async def dashboard_history():
     volume = await db.fetch(
-        "SELECT date_trunc('hour', ts) AS hour, COUNT(*) AS count "
-        "FROM syslog_messages "
-        "WHERE ts > NOW() - INTERVAL '24 hours' "
+        "SELECT hour, SUM(count)::int AS count "
+        "FROM log_stats_hourly "
+        "WHERE hour > date_trunc('hour', NOW() - INTERVAL '24 hours') "
         "GROUP BY hour ORDER BY hour"
     )
     volume_yesterday = await db.fetch(
-        "SELECT date_trunc('hour', ts + INTERVAL '24 hours') AS hour, COUNT(*) AS count "
-        "FROM syslog_messages "
-        "WHERE ts BETWEEN NOW() - INTERVAL '48 hours' AND NOW() - INTERVAL '24 hours' "
+        "SELECT hour + INTERVAL '24 hours' AS hour, SUM(count)::int AS count "
+        "FROM log_stats_hourly "
+        "WHERE hour BETWEEN date_trunc('hour', NOW() - INTERVAL '48 hours') "
+        "AND date_trunc('hour', NOW() - INTERVAL '24 hours') "
         "GROUP BY hour ORDER BY hour"
     )
     severity = await db.fetch(
-        "SELECT severity, COUNT(*) AS count "
-        "FROM syslog_messages "
-        "WHERE ts > NOW() - INTERVAL '24 hours' "
+        "SELECT severity, SUM(count)::int AS count "
+        "FROM log_stats_hourly "
+        "WHERE hour > date_trunc('hour', NOW() - INTERVAL '24 hours') "
         "GROUP BY severity ORDER BY severity"
     )
-    total = await db.fetchval(
-        "SELECT COUNT(*) FROM syslog_messages "
-        "WHERE ts > NOW() - INTERVAL '24 hours'"
-    )
+    total = sum(r["count"] for r in volume) if volume else 0
     top_errors = await db.fetch(
-        "SELECT d.hostname, COUNT(*) AS errors "
-        "FROM syslog_messages m "
-        "JOIN devices d ON d.id = m.device_id "
-        "WHERE m.severity <= 3 AND m.ts > NOW() - INTERVAL '24 hours' "
-        "GROUP BY d.id, d.hostname ORDER BY errors DESC LIMIT 5"
+        "SELECT COALESCE(d.name, d.hostname, host(d.ip)) AS hostname, SUM(s.count)::int AS errors "
+        "FROM log_stats_hourly s "
+        "JOIN devices d ON d.id = s.device_id "
+        "WHERE s.hour > date_trunc('hour', NOW() - INTERVAL '24 hours') "
+        "AND s.severity <= 3 "
+        "GROUP BY d.id, d.hostname, d.name, d.ip ORDER BY errors DESC LIMIT 5"
     )
     per_device = await db.fetch(
-        "SELECT d.hostname, COUNT(*) AS count "
-        "FROM syslog_messages m "
-        "JOIN devices d ON d.id = m.device_id "
-        "WHERE m.ts > NOW() - INTERVAL '24 hours' "
-        "GROUP BY d.id, d.hostname ORDER BY count DESC"
+        "SELECT COALESCE(d.name, d.hostname, host(d.ip)) AS hostname, SUM(s.count)::int AS count "
+        "FROM log_stats_hourly s "
+        "JOIN devices d ON d.id = s.device_id "
+        "WHERE s.hour > date_trunc('hour', NOW() - INTERVAL '24 hours') "
+        "GROUP BY d.id, d.hostname, d.name, d.ip ORDER BY count DESC"
     )
     top_apps = await db.fetch(
-        "SELECT app_name, COUNT(*) AS count "
+        "SELECT app_name, COUNT(*)::int AS count "
         "FROM syslog_messages "
         "WHERE ts > NOW() - INTERVAL '24 hours' AND app_name IS NOT NULL AND app_name != '-' "
         "GROUP BY app_name ORDER BY count DESC LIMIT 10"
     )
     volume_week = await db.fetch(
-        "SELECT date_trunc('day', ts) AS day, COUNT(*) AS count "
-        "FROM syslog_messages "
-        "WHERE ts > NOW() - INTERVAL '7 days' "
+        "SELECT date_trunc('day', hour) AS day, SUM(count)::int AS count "
+        "FROM log_stats_hourly "
+        "WHERE hour > NOW() - INTERVAL '7 days' "
         "GROUP BY day ORDER BY day"
     )
     volume_week_prev = await db.fetch(
-        "SELECT date_trunc('day', ts + INTERVAL '7 days') AS day, COUNT(*) AS count "
-        "FROM syslog_messages "
-        "WHERE ts BETWEEN NOW() - INTERVAL '14 days' AND NOW() - INTERVAL '7 days' "
+        "SELECT date_trunc('day', hour + INTERVAL '7 days') AS day, SUM(count)::int AS count "
+        "FROM log_stats_hourly "
+        "WHERE hour BETWEEN NOW() - INTERVAL '14 days' AND NOW() - INTERVAL '7 days' "
         "GROUP BY day ORDER BY day"
     )
     volume_month = await db.fetch(
-        "SELECT date_trunc('day', ts) AS day, COUNT(*) AS count "
-        "FROM syslog_messages "
-        "WHERE ts > NOW() - INTERVAL '30 days' "
+        "SELECT date_trunc('day', hour) AS day, SUM(count)::int AS count "
+        "FROM log_stats_hourly "
+        "WHERE hour > NOW() - INTERVAL '30 days' "
         "GROUP BY day ORDER BY day"
     )
     volume_month_prev = await db.fetch(
-        "SELECT date_trunc('day', ts + INTERVAL '30 days') AS day, COUNT(*) AS count "
-        "FROM syslog_messages "
-        "WHERE ts BETWEEN NOW() - INTERVAL '60 days' AND NOW() - INTERVAL '30 days' "
+        "SELECT date_trunc('day', hour + INTERVAL '30 days') AS day, SUM(count)::int AS count "
+        "FROM log_stats_hourly "
+        "WHERE hour BETWEEN NOW() - INTERVAL '60 days' AND NOW() - INTERVAL '30 days' "
         "GROUP BY day ORDER BY day"
     )
     anomaly_trend = await db.fetch(

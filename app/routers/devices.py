@@ -26,16 +26,25 @@ async def list_devices():
 @router.get("/devices/bulk-data")
 async def bulk_data():
     # Stats for all devices in one query
+    # Aggregate stats from hourly summary (much faster than scanning syslog_messages)
     stats_rows = await db.fetch(
-        "SELECT device_id, COUNT(*) AS total, MAX(ts) AS last_seen, "
-        "COUNT(*) FILTER (WHERE severity <= 3) AS errors "
-        "FROM syslog_messages GROUP BY device_id"
+        "SELECT device_id, SUM(count)::int AS total, "
+        "SUM(count) FILTER (WHERE severity <= 3)::int AS errors "
+        "FROM log_stats_hourly "
+        "GROUP BY device_id"
     )
+    last_seen_rows = await db.fetch(
+        "SELECT DISTINCT ON (device_id) device_id, ts AS last_seen "
+        "FROM syslog_messages ORDER BY device_id, ts DESC"
+    )
+    ls_map = {r["device_id"]: r["last_seen"] for r in last_seen_rows}
     stats = {}
     for r in stats_rows:
-        online = r["last_seen"] and (datetime.now(timezone.utc) - r["last_seen"]).total_seconds() < 300
-        stats[r["device_id"]] = {
-            "total": r["total"], "last_seen": r["last_seen"],
+        did = r["device_id"]
+        ts = ls_map.get(did)
+        online = ts and (datetime.now(timezone.utc) - ts).total_seconds() < 300
+        stats[did] = {
+            "total": r["total"], "last_seen": ts,
             "errors": r["errors"], "online": online,
         }
     # Anomaly counts per device
@@ -49,12 +58,12 @@ async def bulk_data():
             stats[did_key]["anomalies"] = r["cnt"]
         else:
             stats[did_key] = {"anomalies": r["cnt"]}
-    # Mini-chart data for all devices in one query
+    # Mini-chart data for all devices
     chart_rows = await db.fetch(
-        "SELECT device_id, date_trunc('hour', ts) AS hour, severity, COUNT(*) AS count "
-        "FROM syslog_messages "
-        "WHERE ts > NOW() - INTERVAL '24 hours' "
-        "GROUP BY device_id, hour, severity ORDER BY device_id, hour"
+        "SELECT device_id, hour, severity, count "
+        "FROM log_stats_hourly "
+        "WHERE hour > date_trunc('hour', NOW() - INTERVAL '24 hours') "
+        "ORDER BY device_id, hour"
     )
     sev_labels = ['Emerg','Alert','Crit','Err','Warning','Notice','Info','Debug']
     dev_data = {}

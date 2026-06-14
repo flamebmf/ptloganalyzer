@@ -76,6 +76,14 @@ CREATE TABLE IF NOT EXISTS anomalies (
 );
 CREATE INDEX IF NOT EXISTS idx_anomalies_device ON anomalies(device_id, detected_at DESC);
 CREATE INDEX IF NOT EXISTS idx_anomalies_severity ON anomalies(severity);
+
+CREATE TABLE IF NOT EXISTS log_stats_hourly (
+    device_id INT NOT NULL REFERENCES devices(id),
+    hour      TIMESTAMPTZ NOT NULL,
+    severity  SMALLINT NOT NULL DEFAULT 6,
+    count     INT NOT NULL DEFAULT 0,
+    PRIMARY KEY (device_id, hour, severity)
+);
 """
 
 
@@ -105,6 +113,7 @@ class Database:
                 await conn.execute(SCHEMA_SQL)
 
         await self._ensure_vector_schema()
+        await self._ensure_hourly_stats()
 
     async def _ensure_vector_schema(self):
         try:
@@ -127,6 +136,28 @@ class Database:
                 """)
         except Exception:
             pass  # pgvector не доступен — логируем без эмбеддингов
+
+    async def _ensure_hourly_stats(self):
+        async with self.pool.acquire() as conn:
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS log_stats_hourly (
+                    device_id INT NOT NULL REFERENCES devices(id),
+                    hour      TIMESTAMPTZ NOT NULL,
+                    severity  SMALLINT NOT NULL DEFAULT 6,
+                    count     INT NOT NULL DEFAULT 0,
+                    PRIMARY KEY (device_id, hour, severity)
+                )
+            """)
+            # Backfill if table is empty
+            exists = await conn.fetchval("SELECT EXISTS (SELECT 1 FROM log_stats_hourly LIMIT 1)")
+            if not exists:
+                await conn.execute("""
+                    INSERT INTO log_stats_hourly (device_id, hour, severity, count)
+                    SELECT device_id, date_trunc('hour', ts) AS hour, severity, COUNT(*) AS count
+                    FROM syslog_messages GROUP BY device_id, date_trunc('hour', ts), severity
+                    ON CONFLICT (device_id, hour, severity) DO NOTHING
+                """)
+                log.info("hourly_stats_backfilled")
 
     async def _ensure_indexes(self):
         async with self.pool.acquire() as conn:
