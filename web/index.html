@@ -51,7 +51,7 @@
 <div class="chart-row">
   <div class="chart-card full" style="height:280px;padding:14px">
     <div class="card-title" style="margin-bottom:6px;display:flex;justify-content:space-between;align-items:center">
-      <span><i class="bi bi-graph-up"></i> <span>Log volume D2D</span></span>
+      <span><i class="bi bi-graph-up"></i> <span>Log volume</span></span>
       <div class="chart-tabs" style="display:flex;gap:4px">
         <button class="chart-tab active" data-voltab="d2d" onclick="switchVolTab('d2d')">D2D</button>
         <button class="chart-tab" data-voltab="week" onclick="switchVolTab('week')">Week</button>
@@ -148,9 +148,9 @@ async function loadStats() {
     if (elActive) elActive.textContent = active;
     var elLogs = document.getElementById('statLogs');
     if (elLogs) elLogs.textContent = total;
-    var anomalies = await apiGet('/api/anomalies?limit=1');
+    var anomalies = await apiGet('/api/anomalies?limit=1&resolved=false');
     var elAnom = document.getElementById('statAnomalies');
-    if (elAnom) elAnom.textContent = anomalies.items ? anomalies.items.length : 0;
+    if (elAnom) elAnom.textContent = anomalies.total || 0;
   } catch(err) {}
 }
 

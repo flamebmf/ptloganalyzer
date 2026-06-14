@@ -31,6 +31,17 @@ async def bulk_data():
         "FROM syslog_messages GROUP BY device_id"
     )
     stats = {r["device_id"]: {"total": r["total"], "last_seen": r["last_seen"], "errors": r["errors"]} for r in stats_rows}
+    # Anomaly counts per device
+    anom_rows = await db.fetch(
+        "SELECT device_id, COUNT(*) AS cnt FROM anomalies "
+        "WHERE resolved_at IS NULL GROUP BY device_id"
+    )
+    for r in anom_rows:
+        sid = str(r["device_id"])
+        if sid in stats:
+            stats[sid]["anomalies"] = r["cnt"]
+        else:
+            stats[sid] = {"anomalies": r["cnt"]}
     # Mini-chart data for all devices in one query
     chart_rows = await db.fetch(
         "SELECT device_id, date_trunc('hour', ts) AS hour, severity, COUNT(*) AS count "

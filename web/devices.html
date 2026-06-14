@@ -43,7 +43,7 @@ async function loadDevices() {
         + (cardSub ? '<div><span style="color:var(--pt-muted)">' + cardSub + '</span></div>' : '')
         + '<div class="card-stat"><span data-i18n="last_seen">Последний раз</span> <span class="card-lastseen">' + lastSeen + '</span></div>'
         + '<div class="card-stat"><span>Logs / 24h</span> <span class="card-logvol stat-val">' + (s.total || 0) + '</span></div>'
-        + '<div class="card-stat"><span data-i18n="anomalies">Аномалии</span> <span class="card-anomalies">' + (s.errors || 0) + '</span></div>'
+        + '<div class="card-stat"><span data-i18n="anomalies">Аномалии</span> <span class="card-anomalies">' + (s.anomalies || 0) + '</span></div>'
         + '</div></div>'
         + '<div id="' + chartId + '" style="height:60px;margin:4px 10px 6px"></div>'
         + '</div>';
@@ -85,7 +85,7 @@ async function refreshCards() {
       var lv = card.querySelector('.card-logvol');
       if (lv) lv.textContent = s.total || 0;
       var ae = card.querySelector('.card-anomalies');
-      if (ae) ae.textContent = s.errors || 0;
+      if (ae) ae.textContent = s.anomalies || 0;
     }
     document.getElementById('totalDevices').textContent = devices.length;
     document.getElementById('activeDevices').textContent = active;
