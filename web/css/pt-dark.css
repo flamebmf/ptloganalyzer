@@ -122,21 +122,32 @@ body {
 .search-bar input { flex:1; min-width:200px }
 .search-bar select { min-width:120px }
 
-/* Custom severity dropdown */
+/* Severity dropdown */
 .sev-dropdown {
-  display:flex; gap:6px; flex-wrap:wrap; align-items:center;
-  background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.08);
-  border-radius:8px; padding:4px 6px; min-width:200px;
+  position:relative; min-width:130px; flex-shrink:0;
 }
 .sev-dropdown.disabled { opacity:.35; pointer-events:none }
-.sev-opt {
-  display:inline-flex; align-items:center; gap:4px;
-  padding:3px 8px; border-radius:6px; cursor:pointer;
-  font-size:.78rem; color:var(--pt-muted); transition:all .15s;
+.sev-dropdown-selected {
+  display:flex; align-items:center; gap:6px;
+  background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.08);
+  border-radius:8px; padding:8px 12px; cursor:pointer;
+  font-size:.85rem; color:var(--pt-text); user-select:none; white-space:nowrap;
 }
-.sev-opt:hover { background:rgba(255,255,255,.08); color:var(--pt-text) }
-.sev-opt.selected { background:rgba(0,212,255,.12); color:var(--pt-text) }
-.sev-opt .severity-badge { width:8px; height:8px; flex-shrink:0; margin-right:2px }
+.sev-dropdown-selected i { margin-left:auto; font-size:.7rem; color:var(--pt-muted) }
+.sev-dropdown-menu {
+  display:none; position:absolute; top:calc(100% + 4px); left:0; right:0;
+  background:#0a0f16; border:1px solid rgba(255,255,255,.08);
+  border-radius:8px; padding:4px; z-index:100; max-height:280px; overflow-y:auto;
+}
+.sev-dropdown-menu.open { display:block }
+.sev-dropdown-item {
+  display:flex; align-items:center; gap:6px;
+  padding:6px 10px; border-radius:6px; cursor:pointer;
+  font-size:.82rem; color:var(--pt-muted); transition:all .1s;
+}
+.sev-dropdown-item:hover { background:rgba(255,255,255,.08); color:var(--pt-text) }
+.sev-dropdown-item.selected { background:rgba(0,212,255,.12); color:var(--pt-text) }
+.sev-dropdown-item .severity-badge { width:8px; height:8px; flex-shrink:0 }
 
 .btn {
   padding:8px 16px; border-radius:8px; border:none; font-family:inherit;

@@ -318,9 +318,23 @@ class Database:
             where.append(f"message ILIKE ${i}"); args.append(f"%{query}%"); i += 1
         where_sql = " AND ".join(where) if where else "TRUE"
 
-        total = await self.fetchval(
-            f"SELECT COUNT(*) FROM syslog_messages WHERE {where_sql}", *args
-        )
+        # Use log_stats_hourly for count when no full-text search
+        if not query and device_id is not None:
+            count_args = [device_id]
+            if severity is not None:
+                total = await self.fetchval(
+                    "SELECT COALESCE(SUM(count), 0) FROM log_stats_hourly "
+                    "WHERE device_id = $1 AND severity = $2", *count_args, severity
+                )
+            else:
+                total = await self.fetchval(
+                    "SELECT COALESCE(SUM(count), 0) FROM log_stats_hourly "
+                    "WHERE device_id = $1", *count_args
+                )
+        else:
+            total = await self.fetchval(
+                f"SELECT COUNT(*) FROM syslog_messages WHERE {where_sql}", *args
+            )
         rows = await self.fetch(
             f"SELECT id, device_id, ts, facility, severity, app_name, message "
             f"FROM syslog_messages WHERE {where_sql} "

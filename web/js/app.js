@@ -283,28 +283,48 @@ function createSeverityDropdown(container) {
     {value:'7', label:'DEBUG', cls:'debug'},
   ];
   container.classList.add('sev-dropdown');
-  container.innerHTML = items.map(function(o) {
-    var dot = o.cls ? '<span class="severity-badge ' + o.cls + '"></span>' : '';
-    return '<div class="sev-opt" data-value="' + o.value + '">' + dot + o.label + '</div>';
-  }).join('');
+  container.innerHTML = '<div class="sev-dropdown-selected" tabindex="0"><span>Severity</span><i class="bi bi-chevron-down"></i></div>'
+    + '<div class="sev-dropdown-menu">'
+    + items.map(function(o) {
+        var dot = o.cls ? '<span class="severity-badge ' + o.cls + '"></span>' : '';
+        return '<div class="sev-dropdown-item" data-value="' + o.value + '">' + dot + o.label + '</div>';
+      }).join('')
+    + '</div>';
   container._value = '';
+  var sel = container.querySelector('.sev-dropdown-selected');
+  var menu = container.querySelector('.sev-dropdown-menu');
 
-  container.querySelectorAll('.sev-opt').forEach(function(el) {
+  sel.addEventListener('click', function(e) {
+    e.stopPropagation();
+    menu.classList.toggle('open');
+  });
+
+  container.querySelectorAll('.sev-dropdown-item').forEach(function(el) {
     el.addEventListener('click', function(e) {
       e.stopPropagation();
-      container.querySelectorAll('.sev-opt').forEach(function(x) { x.classList.remove('selected'); });
+      container.querySelectorAll('.sev-dropdown-item').forEach(function(x) { x.classList.remove('selected'); });
       el.classList.add('selected');
       container._value = el.dataset.value;
+      var label = el.textContent.trim();
+      sel.innerHTML = el.innerHTML + '<i class="bi bi-chevron-down"></i>';
+      menu.classList.remove('open');
       container.dispatchEvent(new Event('change'));
     });
   });
+
+  document.addEventListener('click', function() { menu.classList.remove('open'); });
 
   Object.defineProperty(container, 'value', {
     get: function() { return container._value; },
     set: function(v) {
       container._value = v || '';
-      container.querySelectorAll('.sev-opt').forEach(function(el) {
-        el.classList.toggle('selected', el.dataset.value === container._value);
+      container.querySelectorAll('.sev-dropdown-item').forEach(function(el) {
+        if (el.dataset.value === container._value) {
+          el.classList.add('selected');
+          sel.innerHTML = el.innerHTML + '<i class="bi bi-chevron-down"></i>';
+        } else {
+          el.classList.remove('selected');
+        }
       });
     }
   });
