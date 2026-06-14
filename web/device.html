@@ -34,6 +34,14 @@
 
 <div class="chart-card" style="margin-top:14px">
   <div class="card-header">
+    <div class="card-title"><i class="bi bi-exclamation-triangle"></i> <span data-i18n="anomalies">Аномалии</span> <span class="badge badge-err" id="deviceAnomalyCount" style="font-size:.7rem;margin-left:6px">0</span></div>
+    <button class="btn btn-outline btn-sm" onclick="loadDeviceAnomalies()"><i class="bi bi-arrow-clockwise"></i></button>
+  </div>
+  <div id="deviceAnomalyList" style="font-size:.82rem"></div>
+</div>
+
+<div class="chart-card" style="margin-top:14px">
+  <div class="card-header">
     <div class="card-title"><span data-i18n="logs">Логи</span></div>
     <div>
       <button class="btn btn-outline btn-sm" id="toggleLogsBtn" onclick="toggleLogs()" style="display:none"><i class="bi bi-chevron-down"></i> <span id="toggleLogsLabel">Показать все</span></button>
@@ -108,6 +116,7 @@ async function loadDevice() {
     loadCharts();
     loadDeviceLogs();
     loadSummaries();
+    loadDeviceAnomalies();
   } catch(err) { showToast('Error: '+err, 'error'); }
 }
 
@@ -204,6 +213,31 @@ async function loadDeviceLogs() {
     var data = await apiGet(url);
     renderLogs(data);
   } catch(err) { showToast('Error: '+err, 'error'); }
+}
+
+async function loadDeviceAnomalies() {
+  if (!deviceId) return;
+  try {
+    var data = await apiGet('/api/anomalies?device_id=' + deviceId + '&limit=50&resolved=false');
+    var el = document.getElementById('deviceAnomalyList');
+    var countEl = document.getElementById('deviceAnomalyCount');
+    var items = data.items || [];
+    if (countEl) countEl.textContent = data.total || items.length;
+    if (items.length === 0) {
+      el.innerHTML = '<div class="empty-state" style="padding:12px"><p>Нет активных аномалий</p></div>';
+      return;
+    }
+    el.innerHTML = items.map(function(a) {
+      var sevColor = a.severity === 'critical' ? '#ff5252' : (a.severity === 'warning' ? '#ffd740' : '#00d4ff');
+      var dot = '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + sevColor + ';margin-right:6px"></span>';
+      return '<div style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.03);align-items:flex-start">'
+        + '<span style="white-space:nowrap;font-size:.72rem;color:var(--pt-muted);min-width:80px">' + formatTime(a.detected_at) + '</span>'
+        + '<span style="white-space:nowrap;font-size:.72rem;min-width:60px">' + dot + (a.severity === 'critical' ? 'Critical' : 'Warning') + '</span>'
+        + '<span style="flex:1;color:var(--pt-text)">' + escHtml(a.title) + '</span>'
+        + (a.count > 1 ? '<span class="badge badge-err" style="font-size:.65rem">' + a.count + 'x</span>' : '')
+        + '</div>';
+    }).join('');
+  } catch(err) { showToast('Ошибка: '+err, 'error'); }
 }
 
 function todayStr() {
