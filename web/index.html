@@ -133,10 +133,16 @@
 <div id="sseEnabled" style="display:none"></div>
 
 <script>
+var _bulkPromise = null;
+function getBulkData() {
+  if (!_bulkPromise) _bulkPromise = apiGet('/api/devices/bulk-data');
+  return _bulkPromise;
+}
+
 async function loadStats() {
   try {
     var devices = await apiGet('/api/devices');
-    var bulk = await apiGet('/api/devices/bulk-data');
+    var bulk = await getBulkData();
     var elDev = document.getElementById('statDevices');
     if (elDev) elDev.textContent = devices.length;
     var active = 0, total = 0;
@@ -177,7 +183,7 @@ async function loadStorage() {
 async function loadDeviceGrid() {
   try {
     var devices = await apiGet('/api/devices');
-    var bulk = await apiGet('/api/devices/bulk-data');
+    var bulk = await getBulkData();
     var el = document.getElementById('dashDeviceGrid');
     if (!el) return;
     var html = '';
@@ -288,6 +294,7 @@ async function loadDashboardCharts() {
 }
 
 window.pageLoaded = function() {
+  _bulkPromise = null;
   loadStats();
   loadStorage();
   loadDeviceGrid();
