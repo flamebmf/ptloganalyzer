@@ -75,6 +75,7 @@ class Config:
         anom = ai.get("anomaly_detection", {})
         self.anomaly_interval: int = anom.get("interval_minutes", 15)
         self.anomaly_sensitivity: str = anom.get("sensitivity", "medium")
+        self.anomaly_min_severity: str = anom.get("min_severity", "info")
         self.ai_language: str = ai.get("language", "ru")
 
         w = raw.get("web", {})

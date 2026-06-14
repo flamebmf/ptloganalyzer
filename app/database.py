@@ -406,7 +406,8 @@ class Database:
 
     async def list_anomalies(self, device_id: int | None = None,
                               limit: int = 50, offset: int = 0,
-                              resolved: bool | None = None):
+                              resolved: bool | None = None,
+                              min_severity: str | None = None):
         # Auto-resolve stale anomalies
         await self.execute(
             "UPDATE anomalies SET resolved_at = NOW() "
@@ -423,6 +424,11 @@ class Database:
             where += f" AND a.resolved_at IS NOT NULL"
         elif resolved is False:
             where += f" AND a.resolved_at IS NULL"
+        if min_severity:
+            sev_order = {"info": 0, "warning": 1, "critical": 2}
+            thr = sev_order.get(min_severity, 0)
+            # Inline severity rank: critical=2, warning=1, info=0
+            where += f" AND CASE a.severity WHEN 'critical' THEN 2 WHEN 'warning' THEN 1 ELSE 0 END >= {thr}"
         total = await self.fetchval(
             f"SELECT COUNT(*) FROM anomalies a WHERE {where}", *args
         )

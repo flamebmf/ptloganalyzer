@@ -115,6 +115,7 @@ $cfg{ai} = {
   anomaly_detection => {
     interval_minutes => 15,
     sensitivity      => 'medium',
+    min_severity     => 'info',
   },
   language => $ENV{AI_LANGUAGE} // 'ru',
 };

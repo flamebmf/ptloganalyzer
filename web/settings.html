@@ -38,6 +38,16 @@
       <button class="btn btn-primary btn-sm" onclick="saveProvider()"><i class="bi bi-check-lg"></i> Применить</button>
     </div>
     <div id="aiProviderFields" class="settings-form" style="margin-bottom:12px"></div>
+    <div class="settings-form" style="padding-top:12px;border-top:1px solid rgba(255,255,255,.06)">
+      <label><i class="bi bi-funnel"></i> Мин. уровень аномалий</label>
+      <select id="anomalyMinSev">
+        <option value="info">Info (все)</option>
+        <option value="warning">Warning и выше</option>
+        <option value="critical">Только Critical</option>
+      </select>
+      <button class="btn btn-primary btn-sm" onclick="saveAnomalyMinSev()" style="margin-top:4px"><i class="bi bi-check-lg"></i> Сохранить</button>
+      <small style="display:block;color:var(--pt-muted);margin-top:4px">Аномалии ниже указанного уровня не будут создаваться и отображаться.</small>
+    </div>
     <small style="color:var(--pt-muted)">Смена AI провайдера требует перезапуска AI-воркера.</small>
   </div>
 </div>
@@ -63,11 +73,12 @@ async function loadSettings() {
       + '<label>AI суммаризация</label>'
       + '<input type="text" value="Интервал: ' + settings.ai.summarization_interval + ' мин" readonly style="width:100%;margin-bottom:12px">'
       + '<label>Детекция аномалий</label>'
-      + '<input type="text" value="Интервал: ' + settings.ai.anomaly_interval + ' мин" readonly>';
+      + '<input type="text" value="Интервал: ' + settings.ai.anomaly_interval + ' мин | Мин. уровень: ' + (settings.ai.anomaly_min_severity || 'info') + '" readonly style="width:100%;margin-bottom:12px">';
 
     document.getElementById('langSelect').value = settings.web.language;
     document.getElementById('aiLangSelect').value = settings.ai.language;
     document.getElementById('aiProvider').value = settings.ai.provider;
+    document.getElementById('anomalyMinSev').value = settings.ai.anomaly_min_severity || 'info';
     updateAiStatus(settings.ai);
     showProviderFields();
   } catch(err) { showToast('Ошибка: '+err, 'error'); }
@@ -137,6 +148,14 @@ async function saveAiLang() {
   try {
     await apiPatch('/api/settings', {ai_language: lang});
     showToast('Язык AI анализа сохранён: ' + lang + '. Изменения применятся к следующим суммари.', 'success');
+  } catch(err) { showToast('Ошибка: '+err, 'error'); }
+}
+
+async function saveAnomalyMinSev() {
+  var sev = document.getElementById('anomalyMinSev').value;
+  try {
+    await apiPatch('/api/settings', {anomaly_min_severity: sev});
+    showToast('Мин. уровень аномалий: ' + sev, 'success');
   } catch(err) { showToast('Ошибка: '+err, 'error'); }
 }
 

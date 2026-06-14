@@ -18,6 +18,7 @@ async def list_anomalies(
 ):
     result = await db.list_anomalies(
         device_id=device_id, limit=limit, offset=offset, resolved=resolved,
+        min_severity=config.anomaly_min_severity,
     )
     result["limit"] = limit
     result["offset"] = offset

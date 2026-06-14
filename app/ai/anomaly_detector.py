@@ -25,6 +25,12 @@ class AnomalyDetector:
         if self.provider and ai_enabled:
             await self._check_ai_content(device_id)
 
+    async def _insert_anomaly(self, device_id: int, severity: str, title: str, description: str | None = None):
+        sev_order = {"info": 0, "warning": 1, "critical": 2}
+        if sev_order.get(severity, 0) < sev_order.get(self.cfg.anomaly_min_severity, 0):
+            return None
+        return await self.db.insert_anomaly(device_id, severity, title, description)
+
     async def _check_volume(self, device_id: int):
         baseline = await self.db.fetchrow(
             "SELECT AVG(cnt) AS avg_per_hour, "
@@ -45,7 +51,7 @@ class AnomalyDetector:
         if baseline and baseline["std_per_hour"] and baseline["std_per_hour"] > 0:
             z_score = (recent["cnt"] - baseline["avg_per_hour"]) / baseline["std_per_hour"]
             if abs(z_score) > 3:
-                await self.db.insert_anomaly(
+                await self._insert_anomaly(
                     device_id,
                     "critical" if abs(z_score) > 5 else "warning",
                     "Anomalous log volume detected",
@@ -139,7 +145,7 @@ class AnomalyDetector:
             recent_cnt = r["cnt"]
             avg_cnt = avg_map.get(aname, 0)
             if avg_cnt > 0 and recent_cnt > avg_cnt * 5 and recent_cnt >= 20:
-                await self.db.insert_anomaly(
+                await self._insert_anomaly(
                     device_id, "warning",
                     f"Application spike: {aname}",
                     f"{recent_cnt} logs in 15 min (avg={avg_cnt:.0f}/h, {recent_cnt/avg_cnt:.0f}x)",
@@ -165,7 +171,7 @@ class AnomalyDetector:
             )
             for a in anomalies:
                 if isinstance(a, dict) and "title" in a:
-                    await self.db.insert_anomaly(
+                    await self._insert_anomaly(
                         device_id,
                         a.get("severity", "warning"),
                         a["title"],

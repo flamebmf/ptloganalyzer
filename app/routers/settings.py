@@ -34,12 +34,15 @@ def apply_overrides():
         config.language = ov["language"]
     if ov.get("ai_language"):
         config.ai_language = ov["ai_language"]
+    if ov.get("anomaly_min_severity"):
+        config.anomaly_min_severity = ov["anomaly_min_severity"]
 
 
 class SettingsUpdate(BaseModel):
     ai_provider: str | None = None
     language: str | None = None
     ai_language: str | None = None
+    anomaly_min_severity: str | None = None
 
 
 @router.get("/settings")
@@ -52,6 +55,7 @@ async def get_settings():
             "language": config.ai_language,
             "summarization_interval": config.summary_interval,
             "anomaly_interval": config.anomaly_interval,
+            "anomaly_min_severity": config.anomaly_min_severity,
             "openai": {"url": config.openai_base_url, "model": config.openai_chat_model, "has_key": bool(config.openai_api_key)},
             "ollama": {"url": config.ollama_base_url, "model": config.ollama_chat_model},
             "routerai": {"url": config.routerai_base_url, "model": config.routerai_chat_model, "has_key": bool(config.routerai_api_key)},
@@ -73,6 +77,9 @@ async def update_settings(data: SettingsUpdate):
     if data.ai_language and data.ai_language in ("ru", "en"):
         config.ai_language = data.ai_language
         changed["ai_language"] = data.ai_language
+    if data.anomaly_min_severity and data.anomaly_min_severity in ("info", "warning", "critical"):
+        config.anomaly_min_severity = data.anomaly_min_severity
+        changed["anomaly_min_severity"] = data.anomaly_min_severity
     if changed:
         ov = load_overrides()
         ov.update(changed)
