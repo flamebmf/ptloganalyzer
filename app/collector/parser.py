@@ -126,10 +126,10 @@ def parse_syslog(data: bytes, source_addr: tuple | None = None) -> dict | None:
             "source_ip": source_addr[0] if source_addr else None,
         }
 
-    # Fallback: just store raw
+    # Fallback: just store raw (no PRI → default to INFO, not EMERG)
     return {
         "facility": 0,
-        "severity": 0,
+        "severity": 6,
         "timestamp": datetime.now(timezone.utc),
         "hostname": source_addr[0] if source_addr else "unknown",
         "app_name": "-",
