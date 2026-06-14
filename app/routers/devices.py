@@ -37,11 +37,11 @@ async def bulk_data():
         "WHERE resolved_at IS NULL GROUP BY device_id"
     )
     for r in anom_rows:
-        sid = str(r["device_id"])
-        if sid in stats:
-            stats[sid]["anomalies"] = r["cnt"]
+        did_key = r["device_id"]  # int
+        if did_key in stats:
+            stats[did_key]["anomalies"] = r["cnt"]
         else:
-            stats[sid] = {"anomalies": r["cnt"]}
+            stats[did_key] = {"anomalies": r["cnt"]}
     # Mini-chart data for all devices in one query
     chart_rows = await db.fetch(
         "SELECT device_id, date_trunc('hour', ts) AS hour, severity, COUNT(*) AS count "
