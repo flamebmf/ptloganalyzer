@@ -50,13 +50,7 @@
   </div>
   <div class="search-bar">
     <input type="text" id="logSearch" placeholder="Поиск..." onkeyup="if(event.key==='Enter')loadDeviceLogs()">
-    <select id="sevFilter">
-      <option value="">Severity</option>
-      <option value="0">EMERG</option><option value="1">ALERT</option>
-      <option value="2">CRIT</option><option value="3">ERR</option>
-      <option value="4">WARNING</option><option value="5">NOTICE</option>
-      <option value="6">INFO</option><option value="7">DEBUG</option>
-    </select>
+    <div id="sevFilter"></div>
     <button class="btn btn-outline btn-sm" id="semanticToggle" onclick="toggleSemantic()" title="Семантический поиск"><i class="bi bi-stars"></i></button>
     <button class="btn btn-primary btn-sm" onclick="loadDeviceLogs()"><i class="bi bi-search"></i></button>
   </div>
@@ -96,6 +90,7 @@ function fmtDateLabel(iso) {
 }
 
 async function loadDevice() {
+  createSeverityDropdown(document.getElementById('sevFilter'));
   var main = document.getElementById('mainContent');
   var pageUrl = main ? main.dataset.page : window.location.hash.replace(/^#/, '');
   var qs = pageUrl && pageUrl.includes('?') ? pageUrl.split('?')[1] : location.search.substring(1);

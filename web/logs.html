@@ -8,13 +8,7 @@
   <div class="search-bar">
     <input type="text" id="query" placeholder="Поиск по тексту..." onkeyup="if(event.key==='Enter')searchLogs()">
     <select id="deviceFilter"><option value="">All devices</option></select>
-    <select id="sevFilter">
-      <option value="">Severity</option>
-      <option value="0">EMERG</option><option value="1">ALERT</option>
-      <option value="2">CRIT</option><option value="3">ERR</option>
-      <option value="4">WARNING</option><option value="5">NOTICE</option>
-      <option value="6">INFO</option><option value="7">DEBUG</option>
-    </select>
+    <div id="sevFilter"></div>
     <button class="btn btn-outline btn-sm" id="semanticToggle" onclick="toggleSemantic()" title="Семантический поиск"><i class="bi bi-stars"></i></button>
     <button class="btn btn-primary btn-sm" onclick="searchLogs()"><i class="bi bi-search"></i> <span data-i18n="search">Поиск</span></button>
   </div>
@@ -44,6 +38,7 @@ function toggleSemantic() {
 }
 
 async function initPage() {
+  createSeverityDropdown(document.getElementById('sevFilter'));
   try {
     var devices = await apiGet('/api/devices');
     var sel = document.getElementById('deviceFilter');

@@ -25,6 +25,9 @@ RFC3164_RE = re.compile(
     r"(.*)"                                    # MSG
 )
 
+# PRI-only: <PRI>MSG — no timestamp, no hostname (e.g. embedded devices)
+PRI_ONLY_RE = re.compile(r"<(\d{1,3})>(.*)")
+
 
 def parse_priority(pri: int) -> tuple[int, int]:
     facility = pri // 8
@@ -101,6 +104,24 @@ def parse_syslog(data: bytes, source_addr: tuple | None = None) -> dict | None:
             "process_id": "",
             "msgid": "",
             "message": msg,
+            "raw": raw,
+            "source_ip": source_addr[0] if source_addr else None,
+        }
+
+    # PRI-only: <PRI>MSG without timestamp/hostname (e.g. embedded/SIP devices)
+    m = PRI_ONLY_RE.match(raw)
+    if m:
+        pri = int(m.group(1))
+        facility, severity = parse_priority(pri)
+        return {
+            "facility": facility,
+            "severity": severity,
+            "timestamp": datetime.now(timezone.utc),
+            "hostname": source_addr[0] if source_addr else "unknown",
+            "app_name": "-",
+            "process_id": "",
+            "msgid": "",
+            "message": m.group(2) or raw,
             "raw": raw,
             "source_ip": source_addr[0] if source_addr else None,
         }

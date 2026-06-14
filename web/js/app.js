@@ -270,6 +270,53 @@ window.addEventListener('hashchange', () => {
   loadPage(page);
 });
 
+function createSeverityDropdown(container) {
+  const items = [
+    {value:'', label:'Severity', cls:''},
+    {value:'0', label:'EMERG', cls:'emerg'},
+    {value:'1', label:'ALERT', cls:'alert'},
+    {value:'2', label:'CRIT', cls:'crit'},
+    {value:'3', label:'ERR', cls:'err'},
+    {value:'4', label:'WARNING', cls:'warning'},
+    {value:'5', label:'NOTICE', cls:'notice'},
+    {value:'6', label:'INFO', cls:'info'},
+    {value:'7', label:'DEBUG', cls:'debug'},
+  ];
+  container.classList.add('sev-dropdown');
+  container.innerHTML = items.map(function(o) {
+    var dot = o.cls ? '<span class="severity-badge ' + o.cls + '"></span>' : '';
+    return '<div class="sev-opt" data-value="' + o.value + '">' + dot + o.label + '</div>';
+  }).join('');
+  container._value = '';
+
+  container.querySelectorAll('.sev-opt').forEach(function(el) {
+    el.addEventListener('click', function(e) {
+      e.stopPropagation();
+      container.querySelectorAll('.sev-opt').forEach(function(x) { x.classList.remove('selected'); });
+      el.classList.add('selected');
+      container._value = el.dataset.value;
+      container.dispatchEvent(new Event('change'));
+    });
+  });
+
+  Object.defineProperty(container, 'value', {
+    get: function() { return container._value; },
+    set: function(v) {
+      container._value = v || '';
+      container.querySelectorAll('.sev-opt').forEach(function(el) {
+        el.classList.toggle('selected', el.dataset.value === container._value);
+      });
+    }
+  });
+
+  Object.defineProperty(container, 'disabled', {
+    get: function() { return container.classList.contains('disabled'); },
+    set: function(v) {
+      container.classList.toggle('disabled', !!v);
+    }
+  });
+}
+
 // Load from hash on initial page load (skip if already on index)
 (function() {
   const page = window.location.hash.replace(/^#/, '');

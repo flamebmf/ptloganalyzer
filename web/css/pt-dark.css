@@ -122,6 +122,22 @@ body {
 .search-bar input { flex:1; min-width:200px }
 .search-bar select { min-width:120px }
 
+/* Custom severity dropdown */
+.sev-dropdown {
+  display:flex; gap:6px; flex-wrap:wrap; align-items:center;
+  background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.08);
+  border-radius:8px; padding:4px 6px; min-width:200px;
+}
+.sev-dropdown.disabled { opacity:.35; pointer-events:none }
+.sev-opt {
+  display:inline-flex; align-items:center; gap:4px;
+  padding:3px 8px; border-radius:6px; cursor:pointer;
+  font-size:.78rem; color:var(--pt-muted); transition:all .15s;
+}
+.sev-opt:hover { background:rgba(255,255,255,.08); color:var(--pt-text) }
+.sev-opt.selected { background:rgba(0,212,255,.12); color:var(--pt-text) }
+.sev-opt .severity-badge { width:8px; height:8px; flex-shrink:0; margin-right:2px }
+
 .btn {
   padding:8px 16px; border-radius:8px; border:none; font-family:inherit;
   font-weight:700; font-size:.78rem; text-transform:uppercase; letter-spacing:1px;
