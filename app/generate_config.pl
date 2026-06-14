@@ -116,6 +116,7 @@ $cfg{ai} = {
     interval_minutes => 15,
     sensitivity      => 'medium',
   },
+  language => $ENV{AI_LANGUAGE} // 'ru',
 };
 
 $cfg{web} = {

@@ -41,6 +41,237 @@ my %web  = (api_port=>8000, web_port=>80, serve_static=>0);
 my $LANG = 'ru';
 my $DEVICES_CFG = '';
 
+# ──────────────────────────────────────────────
+# i18n — translations
+# ──────────────────────────────────────────────
+my %T = (
+  ru => {
+    lang_select => "Выберите язык установки / Choose language [ru/en]",
+    lang_ok => "Язык установки: русский",
+    existing_title => "Обнаружена конфигурация",
+    existing_opt1 => "Пересобрать и развернуть заново",
+    existing_opt1d => "(перегенерация pod'ов, пересборка образов, деплой)",
+    existing_opt2 => "Удалить старый конфиг и настроить заново",
+    existing_q => "Выход",
+    existing_prompt => "Ваш выбор [1/2/q]",
+    existing_invalid => "Неверный выбор. Введите 1, 2 или q",
+    mode_title => "Выберите режим развёртывания",
+    m1 => "Полный стек",
+    m1d => "collector + app + AI + web + DB",
+    m2 => "Сервер (без collector)",
+    m2d => "app + AI + web + DB",
+    m3 => "Только collector",
+    m3d => "syslog-приёмник + внешняя БД",
+    m4 => "Без AI",
+    m4d => "collector + app + web + DB",
+    m5 => "Без reverse proxy",
+    m5d => "collector + app + AI + DB — статику раздаёт FastAPI",
+    m6 => "Только БД",
+    m6d => "Инициализация PostgreSQL + pgvector",
+    m_q => "Выход",
+    mode_prompt => "Ваш выбор [1-6/q]",
+    mode_invalid => "Неверный выбор",
+    mode_ok => "Режим",
+    mode_step => "Компоненты",
+    db_title => "База данных",
+    db_coll_only => "Режим collector — только внешняя БД",
+    db_local_q => "PostgreSQL локально (в pod'e) или внешний? [local/external]",
+    db_local_ok => "PostgreSQL будет запущен в pod'е ptlog-infra (сеть ptlog)",
+    db_data_dir => "Директория данных",
+    db_host => "PostgreSQL host",
+    db_port => "PostgreSQL port",
+    db_name => "Database name",
+    db_user => "Username",
+    db_pass => "Password",
+    db_repeat => "Repeat",
+    db_mismatch => "Пароли не совпадают",
+    coll_title => "Коллектор (syslog)",
+    coll_port => "Порт",
+    coll_bind => "Bind address",
+    coll_udp => "Принимать UDP?",
+    coll_tcp => "Принимать TCP?",
+    coll_bsize => "Batch size (сообщений)",
+    coll_bint => "Batch interval (секунд)",
+    ai_title => "AI Engine",
+    ai_choose => "Выберите AI провайдера",
+    ai_o1 => "Ollama (локально)",
+    ai_o2 => "OpenAI / Azure OpenAI",
+    ai_o3 => "RouterAI (маршрутизация моделей)",
+    ai_prompt => "Ваш выбор [1/2/3]",
+    ai_ok => "Ollama API доступен",
+    ai_fail => "Ollama не отвечает по адресу",
+    ai_retry => "Попробовать другой URL? [Y/n]",
+    ai_url => "URL",
+    ai_key => "API key",
+    ai_model => "Chat модель",
+    ai_embed => "Embedding модель",
+    ai_ollama_pod => "Запустить Ollama в pod'е?",
+    web_title_proxy => "Web (nginx reverse proxy)",
+    web_http => "HTTP порт",
+    web_title_api => "API порт (статику раздаёт FastAPI)",
+    web_api => "API порт",
+    dev_title => "Устройства",
+    dev_intro => "Укажите устройства, с которых будет приём логов.",
+    dev_now => "Сейчас добавить?",
+    dev_host => "Хостнейм устройства @1 (Enter — закончить)",
+    dev_name => "Имя (опционально)",
+    dev_ip => "IP (опционально)",
+    dev_type => "Тип (router/switch/server/other)",
+    sum_title => "Сводка конфигурации",
+    sum_mode => "Режим",
+    sum_dir => "Директория",
+    sum_comp => "Компоненты",
+    sum_collector => "Collector",
+    sum_batch => "Batch",
+    sum_api => "API порт",
+    sum_ai => "AI провайдер",
+    sum_web => "Web порт",
+    sum_lang => "Язык AI отчётов",
+    conf_prompt => "Всё верно? [Y/e/d/N] (Enter = да)",
+    conf_no => "Отменено",
+    conf_edit => "Редактирование вручную — измените переменные и запустите заново",
+    conf_def => "Конфигурация сохранена, развёртывание отложено",
+    conf_cfg => "Конфиги в",
+    conf_pod => "Pod-файлы в",
+    conf_run => "Запустите: podman play kube --network ptlog <файл>.kube",
+    done_title => "Готово!",
+    done_deployed => "ptloganalyzer развёрнут",
+    done_cfg => "Конфиги",
+    done_data => "Данные",
+    done_web => "Web UI",
+    done_api => "API",
+    done_commands => "Команды",
+    done_c1 => "podman pod list              # список подов",
+    done_c2 => "podman logs -f ptlog-<pod>   # логи",
+    done_c3 => "podman pod stop ptlog-<pod>  # остановка",
+    done_c4 => "./setup.pl                   # повторный запуск",
+    done_c5 => "./setup.pl --update=app      # обновить только app",
+    done_c6 => "./setup.pl --update=all      # обновить всё",
+    done_c7 => "./setup.pl --push            # собрать + опубликовать в @1",
+    done_c8 => "./setup.pl --pull            # загрузить готовые образы из @1",
+    done_c9 => "./setup.pl --rebuild         # принудительная пересборка base",
+    done_log => "Полный лог",
+  },
+  en => {
+    lang_select => "Choose installation language / Выберите язык установки [en/ru]",
+    lang_ok => "Installation language: English",
+    existing_title => "Existing configuration detected",
+    existing_opt1 => "Rebuild and redeploy",
+    existing_opt1d => "(regenerate pods, rebuild images, deploy)",
+    existing_opt2 => "Delete old config and start fresh",
+    existing_q => "Quit",
+    existing_prompt => "Your choice [1/2/q]",
+    existing_invalid => "Invalid choice. Enter 1, 2 or q",
+    mode_title => "Select deployment mode",
+    m1 => "Full stack",
+    m1d => "collector + app + AI + web + DB",
+    m2 => "Server (no collector)",
+    m2d => "app + AI + web + DB",
+    m3 => "Collector only",
+    m3d => "syslog receiver + external DB",
+    m4 => "No AI",
+    m4d => "collector + app + web + DB",
+    m5 => "No reverse proxy",
+    m5d => "collector + app + AI + DB — FastAPI serves static",
+    m6 => "DB only",
+    m6d => "PostgreSQL + pgvector initialization",
+    m_q => "Quit",
+    mode_prompt => "Your choice [1-6/q]",
+    mode_invalid => "Invalid choice",
+    mode_ok => "Mode",
+    mode_step => "Components",
+    db_title => "Database",
+    db_coll_only => "Collector mode — external DB only",
+    db_local_q => "PostgreSQL local (in pod) or external? [local/external]",
+    db_local_ok => "PostgreSQL will run in ptlog-infra pod (ptlog network)",
+    db_data_dir => "Data directory",
+    db_host => "PostgreSQL host",
+    db_port => "PostgreSQL port",
+    db_name => "Database name",
+    db_user => "Username",
+    db_pass => "Password",
+    db_repeat => "Repeat",
+    db_mismatch => "Passwords do not match",
+    coll_title => "Collector (syslog)",
+    coll_port => "Port",
+    coll_bind => "Bind address",
+    coll_udp => "Accept UDP?",
+    coll_tcp => "Accept TCP?",
+    coll_bsize => "Batch size (messages)",
+    coll_bint => "Batch interval (seconds)",
+    ai_title => "AI Engine",
+    ai_choose => "Choose AI provider",
+    ai_o1 => "Ollama (local)",
+    ai_o2 => "OpenAI / Azure OpenAI",
+    ai_o3 => "RouterAI (model routing)",
+    ai_prompt => "Your choice [1/2/3]",
+    ai_ok => "Ollama API is available",
+    ai_fail => "Ollama not responding at",
+    ai_retry => "Try different URL? [Y/n]",
+    ai_url => "URL",
+    ai_key => "API key",
+    ai_model => "Chat model",
+    ai_embed => "Embedding model",
+    ai_ollama_pod => "Run Ollama in a pod?",
+    web_title_proxy => "Web (nginx reverse proxy)",
+    web_http => "HTTP port",
+    web_title_api => "API port (FastAPI serves static)",
+    web_api => "API port",
+    dev_title => "Devices",
+    dev_intro => "Specify devices that will send logs.",
+    dev_now => "Add now?",
+    dev_host => "Device @1 hostname (Enter to finish)",
+    dev_name => "Name (optional)",
+    dev_ip => "IP (optional)",
+    dev_type => "Type (router/switch/server/other)",
+    sum_title => "Configuration summary",
+    sum_mode => "Mode",
+    sum_dir => "Directory",
+    sum_comp => "Components",
+    sum_collector => "Collector",
+    sum_batch => "Batch",
+    sum_api => "API port",
+    sum_ai => "AI provider",
+    sum_web => "Web port",
+    sum_lang => "AI report language",
+    conf_prompt => "Is everything correct? [Y/e/d/N] (Enter = yes)",
+    conf_no => "Cancelled",
+    conf_edit => "Manual editing — modify variables and re-run",
+    conf_def => "Configuration saved, deployment deferred",
+    conf_cfg => "Configs in",
+    conf_pod => "Pod files in",
+    conf_run => "Run: podman play kube --network ptlog <file>.kube",
+    done_title => "Done!",
+    done_deployed => "ptloganalyzer deployed",
+    done_cfg => "Configs",
+    done_data => "Data",
+    done_web => "Web UI",
+    done_api => "API",
+    done_commands => "Commands",
+    done_c1 => "podman pod list              # list pods",
+    done_c2 => "podman logs -f ptlog-<pod>   # view logs",
+    done_c3 => "podman pod stop ptlog-<pod>  # stop pod",
+    done_c4 => "./setup.pl                   # re-run setup",
+    done_c5 => "./setup.pl --update=app      # update app only",
+    done_c6 => "./setup.pl --update=all      # update all",
+    done_c7 => "./setup.pl --push            # build + publish to @1",
+    done_c8 => "./setup.pl --pull            # pull pre-built images from @1",
+    done_c9 => "./setup.pl --rebuild         # force base rebuild",
+    done_log => "Full log",
+  },
+);
+
+sub t {
+  my ($key, @args) = @_;
+  my $s = $T{$LANG}{$key} // $T{ru}{$key} // $key;
+  if (@args) {
+    my $i = 1;
+    $s =~ s/\@$i/$args[$i-1]/g && $i++ for 1..@args;
+  }
+  return $s;
+}
+
+
 # Colors
 my ($R,$G,$Y,$C,$B,$N) = map {"\e[" . $_ . "m"} qw(0;31 0;32 1;33 0;36 1 0);
 
@@ -239,19 +470,19 @@ sub detect_existing {
   my $cfg = "$INSTALL_DIR/config/deploy.yaml";
   return 0 unless -f $cfg;
 
-  title "Обнаружена конфигурация:";
+  title t('existing_title');
   say "  $cfg\n";
-  say "  ${B}1)${N} Пересобрать и развернуть заново";
-  say "     (перегенерация pod'ов, пересборка образов, деплой)\n";
-  say "  ${B}2)${N} Удалить старый конфиг и настроить заново\n";
-  say "  ${B}q)${N} Выход\n";
+  say "  ${B}1)${N} " . t('existing_opt1');
+  say "     " . t('existing_opt1d') . "\n";
+  say "  ${B}2)${N} " . t('existing_opt2') . "\n";
+  say "  ${B}q)${N} " . t('existing_q') . "\n";
 
   while (1) {
-    my $ans = prompt("Ваш выбор [1/2/q]: ", '1');
+    my $ans = prompt(t('existing_prompt'), '1');
     if ($ans eq '1') { read_deploy_yaml(); return 1 }
     elsif ($ans eq '2') { unlink $cfg; return 0 }
     elsif ($ans =~ /^q/i) { exit 0 }
-    else { warn_msg "Неверный выбор. Введите 1, 2 или q" }
+    else { warn_msg t('existing_invalid') }
   }
 }
 
@@ -259,24 +490,24 @@ sub detect_existing {
 # Mode selection
 # ──────────────────────────────────────────────
 sub select_mode {
-  title "Выберите режим развёртывания";
+  title t('mode_title');
 
-  say "  ${B}1)${N} Полный стек";
-  say "     collector + app + AI + web + DB\n";
-  say "  ${B}2)${N} Сервер (без collector)";
-  say "     app + AI + web + DB\n";
-  say "  ${B}3)${N} Только collector";
-  say "     syslog-приёмник + внешняя БД\n";
-  say "  ${B}4)${N} Без AI";
-  say "     collector + app + web + DB\n";
-  say "  ${B}5)${N} Без reverse proxy";
-  say "     collector + app + AI + DB — статику раздаёт FastAPI\n";
-  say "  ${B}6)${N} Только БД";
-  say "     Инициализация PostgreSQL + pgvector\n";
-  say "  ${B}q)${N} Выход\n";
+  say "  ${B}1)${N} " . t('m1');
+  say "     " . t('m1d') . "\n";
+  say "  ${B}2)${N} " . t('m2');
+  say "     " . t('m2d') . "\n";
+  say "  ${B}3)${N} " . t('m3');
+  say "     " . t('m3d') . "\n";
+  say "  ${B}4)${N} " . t('m4');
+  say "     " . t('m4d') . "\n";
+  say "  ${B}5)${N} " . t('m5');
+  say "     " . t('m5d') . "\n";
+  say "  ${B}6)${N} " . t('m6');
+  say "     " . t('m6d') . "\n";
+  say "  ${B}q)${N} " . t('m_q') . "\n";
 
   while (1) {
-    my $ans = prompt("Ваш выбор [1-6/q]: ", '1');
+    my $ans = prompt(t('mode_prompt'), '1');
     %comp = map { $_ => 0 } qw(infra collector app ai web ollama);
     if ($ans eq '1') { $MODE='full-stack'; $comp{infra}=$comp{collector}=$comp{app}=$comp{ai}=$comp{web}=1; last }
     elsif ($ans eq '2') { $MODE='server'; $comp{infra}=$comp{app}=$comp{ai}=$comp{web}=1; last }
@@ -284,44 +515,44 @@ sub select_mode {
     elsif ($ans eq '4') { $MODE='no-ai'; $comp{infra}=$comp{collector}=$comp{app}=$comp{web}=1; last }
     elsif ($ans eq '5') { $MODE='no-proxy'; $comp{infra}=$comp{collector}=$comp{app}=$comp{ai}=1; $web{serve_static}=1; last }
     elsif ($ans eq '6') { $MODE='db-only'; $comp{infra}=1; last }
-    elsif ($ans =~ /^q/i) { say "Выход"; exit 0 }
-    else { warn_msg "Неверный выбор" }
+    elsif ($ans =~ /^q/i) { say t('m_q'); exit 0 }
+    else { warn_msg t('mode_invalid') }
   }
-  ok "Режим: $MODE";
-  step "Компоненты: infra=$comp{infra} collector=$comp{collector} app=$comp{app} ai=$comp{ai} web=$comp{web}";
+  ok t('mode_ok') . ": $MODE";
+  step t('mode_step') . ": infra=$comp{infra} collector=$comp{collector} app=$comp{app} ai=$comp{ai} web=$comp{web}";
 }
 
 # ──────────────────────────────────────────────
 # Database questions
 # ──────────────────────────────────────────────
 sub ask_database {
-  title "База данных";
+  title t('db_title');
 
   $db{local} = 1;
   if ($MODE eq 'collector') {
     $db{local} = 0;
-    info "Режим collector — только внешняя БД";
+    info t('db_coll_only');
   }
   elsif ($comp{infra} && $MODE ne 'collector') {
-    my $ans = prompt("PostgreSQL локально (в pod'e) или внешний? [local/external]: ", 'local');
+    my $ans = prompt(t('db_local_q'), 'local');
     $db{local} = 0 if $ans =~ /^e/i;
   }
 
   if ($db{local}) {
     $db{host} = 'ptlog-infra';
-    info "PostgreSQL будет запущен в pod'е ptlog-infra (сеть ptlog)";
-    my $ans = prompt("Директория данных", $INSTALL_DIR);
+    info t('db_local_ok');
+    my $ans = prompt(t('db_data_dir'), $INSTALL_DIR);
     $INSTALL_DIR = $ans if length $ans;
   } else {
-    $db{host} = prompt("PostgreSQL host: ", '');
-    $db{port} = prompt("PostgreSQL port", 5432);
-    $db{name} = prompt("Database name", 'ptloganalyzer');
-    $db{user} = prompt("Username", 'ptlog');
+    $db{host} = prompt(t('db_host'), '');
+    $db{port} = prompt(t('db_port'), 5432);
+    $db{name} = prompt(t('db_name'), 'ptloganalyzer');
+    $db{user} = prompt(t('db_user'), 'ptlog');
     while (1) {
-      print "  Password: "; system('stty -echo'); chomp(my $p1 = <STDIN>); system('stty echo'); say '';
-      print "  Repeat:   "; system('stty -echo'); chomp(my $p2 = <STDIN>); system('stty echo'); say '';
+      print "  " . t('db_pass') . ": "; system('stty -echo'); chomp(my $p1 = <STDIN>); system('stty echo'); say '';
+      print "  " . t('db_repeat') . ":   "; system('stty -echo'); chomp(my $p2 = <STDIN>); system('stty echo'); say '';
       if ($p1 eq $p2) { $db{pass} = $p1; last }
-      warn_msg "Пароли не совпадают";
+      warn_msg t('db_mismatch');
     }
   }
 
@@ -334,55 +565,55 @@ sub ask_database {
 # Collector questions
 # ──────────────────────────────────────────────
 sub ask_collector {
-  title "Коллектор (syslog)";
-  $coll{port} = prompt("Порт", 514);
-  $coll{bind} = prompt("Bind address", '0.0.0.0');
-  $coll{udp} = prompt_yn("Принимать UDP?", 'y') ? 1 : 0;
-  $coll{tcp} = prompt_yn("Принимать TCP?", 'y') ? 1 : 0;
-  $coll{batch_size} = prompt("Batch size (сообщений)", 500);
-  $coll{batch_interval} = prompt("Batch interval (секунд)", '1.0');
+  title t('coll_title');
+  $coll{port} = prompt(t('coll_port'), 514);
+  $coll{bind} = prompt(t('coll_bind'), '0.0.0.0');
+  $coll{udp} = prompt_yn(t('coll_udp'), 'y') ? 1 : 0;
+  $coll{tcp} = prompt_yn(t('coll_tcp'), 'y') ? 1 : 0;
+  $coll{batch_size} = prompt(t('coll_bsize'), 500);
+  $coll{batch_interval} = prompt(t('coll_bint'), '1.0');
 }
 
 # ──────────────────────────────────────────────
 # AI questions
 # ──────────────────────────────────────────────
 sub ask_ai {
-  title "AI Engine";
-  say "  Выберите AI провайдера:";
-  say "    1) Ollama (локально)";
-  say "    2) OpenAI / Azure OpenAI";
-  say "    3) RouterAI (маршрутизация моделей)\n";
-  my $ans = prompt("Ваш выбор [1/2/3]: ", '1');
+  title t('ai_title');
+  say "  " . t('ai_choose') . ":";
+  say "    1) " . t('ai_o1');
+  say "    2) " . t('ai_o2');
+  say "    3) " . t('ai_o3') . "\n";
+  my $ans = prompt(t('ai_prompt'), '1');
   if ($ans eq '2') {
     $ai{provider} = 'openai';
-    $ai{openai_key} = prompt("API key: ", '');
-    $ai{openai_url} = prompt("API base URL", $ai{openai_url});
-    $ai{openai_model} = prompt("Chat модель", $ai{openai_model});
-    $ai{openai_embed} = prompt("Embedding модель", $ai{openai_embed});
+    $ai{openai_key} = prompt(t('ai_key') . ": ", '');
+    $ai{openai_url} = prompt(t('ai_url'), $ai{openai_url});
+    $ai{openai_model} = prompt(t('ai_model'), $ai{openai_model});
+    $ai{openai_embed} = prompt(t('ai_embed'), $ai{openai_embed});
     $comp{ollama} = 0;
   } elsif ($ans eq '3') {
     $ai{provider} = 'routerai';
-    $ai{routerai_key} = prompt("API key: ", '');
-    $ai{routerai_url} = prompt("API base URL", $ai{routerai_url});
-    $ai{routerai_model} = prompt("Chat модель", $ai{routerai_model});
-    $ai{routerai_embed} = prompt("Embedding модель", $ai{routerai_embed});
+    $ai{routerai_key} = prompt(t('ai_key') . ": ", '');
+    $ai{routerai_url} = prompt(t('ai_url'), $ai{routerai_url});
+    $ai{routerai_model} = prompt(t('ai_model'), $ai{routerai_model});
+    $ai{routerai_embed} = prompt(t('ai_embed'), $ai{routerai_embed});
     $comp{ollama} = 0;
   } else {
     $ai{provider} = 'ollama';
     while (1) {
-      $ai{ollama_url} = prompt("Ollama URL", $ai{ollama_url});
+      $ai{ollama_url} = prompt(t('ai_url'), $ai{ollama_url});
       $ai{ollama_url} =~ s|/+$||;
       last if $ai{ollama_url} !~ /^http/;
       my $check_url = "$ai{ollama_url}/api/tags";
       my $ok = system("curl -sf --max-time 5 '$check_url' >/dev/null 2>&1") == 0;
-      if ($ok) { info "Ollama API доступен"; last }
-      warn_msg "Ollama не отвечает по адресу $check_url";
-      my $retry = prompt("Попробовать другой URL? [Y/n]: ", 'y');
+      if ($ok) { info t('ai_ok'); last }
+      warn_msg t('ai_fail') . " $check_url";
+      my $retry = prompt(t('ai_retry'), 'y');
       last if $retry =~ /^n/i;
     }
-    $ai{ollama_model} = prompt("Chat модель", $ai{ollama_model});
-    $ai{ollama_embed} = prompt("Embedding модель", $ai{ollama_embed});
-    $comp{ollama} = prompt_yn("Запустить Ollama в pod'е?", 'n') ? 1 : 0;
+    $ai{ollama_model} = prompt(t('ai_model'), $ai{ollama_model});
+    $ai{ollama_embed} = prompt(t('ai_embed'), $ai{ollama_embed});
+    $comp{ollama} = prompt_yn(t('ai_ollama_pod'), 'n') ? 1 : 0;
   }
 }
 
@@ -391,15 +622,15 @@ sub ask_ai {
 # ──────────────────────────────────────────────
 sub ask_web {
   if ($comp{web}) {
-    title "Web (nginx reverse proxy)";
-    $web{web_port} = prompt("HTTP порт", 80);
+    title t('web_title_proxy');
+    $web{web_port} = prompt(t('web_http'), 80);
   }
   if ($web{serve_static}) {
-    title "API порт (статику раздаёт FastAPI)";
-    $web{api_port} = prompt("API порт", 8000);
+    title t('web_title_api');
+    $web{api_port} = prompt(t('web_api'), 8000);
   }
   if ($comp{app} && !$comp{web} && !$web{serve_static}) {
-    $web{api_port} = prompt("API порт", 8000);
+    $web{api_port} = prompt(t('web_api'), 8000);
   }
 }
 
@@ -407,20 +638,20 @@ sub ask_web {
 # Devices
 # ──────────────────────────────────────────────
 sub ask_devices {
-  title "Устройства";
-  say "  Укажите устройства, с которых будет приём логов.";
-  my $ans = prompt_yn("Сейчас добавить?", 'n');
+  title t('dev_title');
+  say "  " . t('dev_intro');
+  my $ans = prompt_yn(t('dev_now'), 'n');
   return unless $ans;
 
   $DEVICES_CFG = '';
   my $i = 1;
   while (1) {
     say '';
-    my $hostname = prompt("Хостнейм устройства $i (Enter — закончить): ", '');
+    my $hostname = prompt(t('dev_host', $i), '');
     last unless length $hostname;
-    my $name = prompt("Имя (опционально): ", '');
-    my $ip   = prompt("IP (опционально): ", '');
-    my $dtype = prompt("Тип (router/switch/server/other)", 'other');
+    my $name = prompt(t('dev_name') . ": ", '');
+    my $ip   = prompt(t('dev_ip') . ": ", '');
+    my $dtype = prompt(t('dev_type'), 'other');
     $DEVICES_CFG .= "  - hostname: $hostname\n";
     $DEVICES_CFG .= "    name: $name\n" if length $name;
     $DEVICES_CFG .= "    ip: $ip\n" if length $ip;
@@ -526,6 +757,7 @@ sub generate_configs {
   $ENV{API_PORT}            = $web{api_port};
   $ENV{WEB_PORT}            = $web{web_port};
   $ENV{LANG}                = $LANG;
+  $ENV{AI_LANGUAGE}         = $LANG;
 
   my $gen_cmd = "perl $SCRIPT_DIR/app/generate_config.pl $cfg_dir/config.yaml";
   my $rc = system($gen_cmd);
@@ -902,10 +1134,10 @@ sub deploy {
 # Show summary
 # ──────────────────────────────────────────────
 sub show_summary {
-  title "Сводка конфигурации";
-  say "  Режим:             $MODE";
-  say "  Директория:        $INSTALL_DIR\n";
-  say "  Компоненты:";
+  title t('sum_title');
+  say "  " . t('sum_mode') . ":       $MODE";
+  say "  " . t('sum_dir') . ":        $INSTALL_DIR\n";
+  say "  " . t('sum_comp') . ":";
   say "    infra (БД):      " . bool_val($comp{infra});
   say "    collector:       " . bool_val($comp{collector});
   say "    app:             " . bool_val($comp{app});
@@ -914,12 +1146,13 @@ sub show_summary {
   say "    ollama:          " . bool_val($comp{ollama});
   say '';
   if ($comp{collector}) {
-    say "  Collector:         $coll{bind}:$coll{port} (UDP:" . bool_val($coll{udp}) . " TCP:" . bool_val($coll{tcp}) . ")";
-    say "  Batch:             $coll{batch_size}msgs / $coll{batch_interval}s";
+    say "  " . t('sum_collector') . ":   $coll{bind}:$coll{port} (UDP:" . bool_val($coll{udp}) . " TCP:" . bool_val($coll{tcp}) . ")";
+    say "  " . t('sum_batch') . ":       $coll{batch_size}msgs / $coll{batch_interval}s";
   }
-  say "  API порт:          $web{api_port}" if $comp{app};
-  say "  AI провайдер:      $ai{provider}" if $comp{ai};
-  say "  Web порт:          $web{web_port}" if $comp{web};
+  say "  " . t('sum_api') . ":     $web{api_port}" if $comp{app};
+  say "  " . t('sum_ai') . ":     $ai{provider}" if $comp{ai};
+  say "  " . t('sum_web') . ":     $web{web_port}" if $comp{web};
+  say "  " . t('sum_lang') . ": $LANG";
   say '';
 }
 
@@ -1030,7 +1263,12 @@ sub update_component {
 sub main {
   title "ptloganalyzer Setup v0.3 (Perl)  © Plurumtech.com";
   say "  Log analysis system with AI summarization";
-  say "  Лог: $LOG_FILE\n";
+  say "  " . t('done_log') . ": $LOG_FILE\n";
+
+  # Language selection
+  my $lang_ans = lc prompt(t('lang_select'), 'ru');
+  $LANG = ($lang_ans eq 'en') ? 'en' : 'ru';
+  info t('lang_ok');
 
   $REBUILD = (grep { $_ eq '--rebuild' } @ARGV) ? 1 : 0;
   info "Флаг --rebuild: принудительная пересборка base-образа" if $REBUILD;
@@ -1103,18 +1341,18 @@ sub main {
 
     show_summary;
 
-    my $ans = prompt("Всё верно? [Y/e/d/N] (Enter = да): ", 'y');
-    if ($ans =~ /^[nN]/) { info "Отменено"; exit 0 }
-    elsif ($ans =~ /^[eE]/) { warn_msg "Редактирование вручную — измените переменные и запустите заново"; exit 0 }
+    my $ans = prompt(t('conf_prompt'), 'y');
+    if ($ans =~ /^[nN]/) { info t('conf_no'); exit 0 }
+    elsif ($ans =~ /^[eE]/) { warn_msg t('conf_edit'); exit 0 }
     elsif ($ans =~ /^[dD]/) {
-      info "Конфигурация сохранена, развёртывание отложено";
+      info t('conf_def');
       generate_configs;
       generate_pods;
       copy_web;
       copy_schema;
-      info "Конфиги в: $INSTALL_DIR/config/";
-      info "Pod-файлы в: $INSTALL_DIR/pod/";
-      info "Запустите: podman play kube --network ptlog <файл>.kube";
+      info t('conf_cfg') . ": $INSTALL_DIR/config/";
+      info t('conf_pod') . ": $INSTALL_DIR/pod/";
+      info t('conf_run');
       exit 0;
     } else {
       generate_configs;
@@ -1126,27 +1364,27 @@ sub main {
     }
   }
 
-  title "Готово!";
+  title t('done_title');
   say "$G┌─────────────────────────────────────────────────────┐${N}";
-  say "$G│${N}  ptloganalyzer развёрнут";
-  say "$G│${N}  Конфиги: $INSTALL_DIR/config/";
-  say "$G│${N}  Данные:  $INSTALL_DIR/data/";
-  say "$G│${N}  Web UI:  http://localhost:$web{web_port}" if $comp{web};
-  say "$G│${N}  API:     http://localhost:$web{api_port}" if $comp{app} && !$comp{web};
+  say "$G│${N}  " . t('done_deployed');
+  say "$G│${N}  " . t('done_cfg') . ": $INSTALL_DIR/config/";
+  say "$G│${N}  " . t('done_data') . ":  $INSTALL_DIR/data/";
+  say "$G│${N}  " . t('done_web') . ":  http://localhost:$web{web_port}" if $comp{web};
+  say "$G│${N}  " . t('done_api') . ":     http://localhost:$web{api_port}" if $comp{app} && !$comp{web};
   say "$G│${N}";
-  say "$G│${N}  Команды:";
-  say "$G│${N}    podman pod list              # список подов";
-  say "$G│${N}    podman logs -f ptlog-<pod>   # логи";
-  say "$G│${N}    podman pod stop ptlog-<pod>  # остановка";
-  say "$G│${N}    ./setup.pl                   # повторный запуск";
-  say "$G│${N}    ./setup.pl --update=app      # обновить только app";
-  say "$G│${N}    ./setup.pl --update=all      # обновить всё";
-  say "$G│${N}    ./setup.pl --push            # собрать + опубликовать в $REGISTRY";
-  say "$G│${N}    ./setup.pl --pull            # загрузить готовые образы из $REGISTRY";
-  say "$G│${N}    ./setup.pl --rebuild         # принудительная пересборка base";
+  say "$G│${N}  " . t('done_commands') . ":";
+  say "$G│${N}    " . t('done_c1');
+  say "$G│${N}    " . t('done_c2');
+  say "$G│${N}    " . t('done_c3');
+  say "$G│${N}    " . t('done_c4');
+  say "$G│${N}    " . t('done_c5');
+  say "$G│${N}    " . t('done_c6');
+  say "$G│${N}    " . t('done_c7', $REGISTRY);
+  say "$G│${N}    " . t('done_c8', $REGISTRY);
+  say "$G│${N}    " . t('done_c9');
   say "$G└─────────────────────────────────────────────────────┘${N}";
   say '';
-  info "Полный лог: $LOG_FILE";
+  info t('done_log') . ": $LOG_FILE";
 }
 
 main(@ARGV);
