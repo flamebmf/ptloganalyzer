@@ -28,7 +28,7 @@ class Scheduler:
 
         # Schedule periodic tasks
         asyncio.create_task(self._loop("summarization",
-                            self.cfg.summary_interval * 60,
+                            3600,  # once per hour
                             self._run_summarization))
         asyncio.create_task(self._daily_loop(
                             self._run_daily_summarization))
@@ -40,7 +40,7 @@ class Scheduler:
                             self._run_embeddings))
 
         log.info("scheduler_started",
-                  summary_interval=self.cfg.summary_interval,
+                  summary_interval_min=60,
                   anomaly_interval=self.cfg.anomaly_interval)
 
     async def stop(self):
@@ -77,10 +77,14 @@ class Scheduler:
         await self._run_embeddings()
 
     async def _run_summarization(self):
+        """Process devices sequentially — one summary per hour, 3 min gap between devices."""
         devices = await self.db.list_devices()
         for d in devices:
+            if not self._running:
+                return
             if self.cfg.ai_enabled and d.get("ai_enabled", True):
                 await self.summarizer.run_for_device(d["id"])
+                await asyncio.sleep(180)  # 3 min between devices
 
     async def _run_daily_summarization(self):
         devices = await self.db.list_devices()

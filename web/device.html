@@ -274,7 +274,7 @@ function renderSummaryItem() {
 
   el.innerHTML = '<div class="summary-block">'
     + hdr
-    + '<div style="font-size:.85rem;line-height:1.7">' + convertLogIds(s.summary) + '</div>'
+    + '<div style="font-size:.85rem;line-height:1.7">' + convertLogIds(mdToHtml(s.summary)) + '</div>'
     + '</div>';
 
   // Carousel bar

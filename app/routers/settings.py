@@ -32,11 +32,14 @@ def apply_overrides():
         config.ai_provider = ov["ai_provider"]
     if ov.get("language"):
         config.language = ov["language"]
+    if ov.get("ai_language"):
+        config.ai_language = ov["ai_language"]
 
 
 class SettingsUpdate(BaseModel):
     ai_provider: str | None = None
     language: str | None = None
+    ai_language: str | None = None
 
 
 @router.get("/settings")
@@ -46,6 +49,7 @@ async def get_settings():
         "ai": {
             "enabled": config.ai_enabled,
             "provider": config.ai_provider,
+            "language": config.ai_language,
             "summarization_interval": config.summary_interval,
             "anomaly_interval": config.anomaly_interval,
             "openai": {"url": config.openai_base_url, "model": config.openai_chat_model, "has_key": bool(config.openai_api_key)},
@@ -66,6 +70,9 @@ async def update_settings(data: SettingsUpdate):
     if data.language and data.language in ("ru", "en"):
         config.language = data.language
         changed["language"] = data.language
+    if data.ai_language and data.ai_language in ("ru", "en"):
+        config.ai_language = data.ai_language
+        changed["ai_language"] = data.ai_language
     if changed:
         ov = load_overrides()
         ov.update(changed)

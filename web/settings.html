@@ -16,6 +16,15 @@
       </select>
       <button class="btn btn-primary btn-sm" onclick="saveLang()" style="margin-top:4px"><i class="bi bi-check-lg"></i> Сохранить</button>
     </div>
+    <div class="settings-form" style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.06)">
+      <label><i class="bi bi-chat-dots"></i> Язык AI анализа</label>
+      <select id="aiLangSelect">
+        <option value="ru">Русский</option>
+        <option value="en">English</option>
+      </select>
+      <button class="btn btn-primary btn-sm" onclick="saveAiLang()" style="margin-top:4px"><i class="bi bi-check-lg"></i> Сохранить</button>
+      <small style="display:block;color:var(--pt-muted);margin-top:4px">Язык ответов AI в почасовых и дневных суммари.</small>
+    </div>
   </div>
   <div class="chart-card half">
     <div class="card-title" style="margin-bottom:16px"><i class="bi bi-stars"></i> AI провайдер</div>
@@ -57,6 +66,7 @@ async function loadSettings() {
       + '<input type="text" value="Интервал: ' + settings.ai.anomaly_interval + ' мин" readonly>';
 
     document.getElementById('langSelect').value = settings.web.language;
+    document.getElementById('aiLangSelect').value = settings.ai.language;
     document.getElementById('aiProvider').value = settings.ai.provider;
     updateAiStatus(settings.ai);
     showProviderFields();
@@ -119,6 +129,14 @@ async function saveLang() {
   try {
     await apiPatch('/api/settings', {language: lang});
     showToast('Язык сохранён: ' + lang, 'success');
+  } catch(err) { showToast('Ошибка: '+err, 'error'); }
+}
+
+async function saveAiLang() {
+  var lang = document.getElementById('aiLangSelect').value;
+  try {
+    await apiPatch('/api/settings', {ai_language: lang});
+    showToast('Язык AI анализа сохранён: ' + lang + '. Изменения применятся к следующим суммари.', 'success');
   } catch(err) { showToast('Ошибка: '+err, 'error'); }
 }
 

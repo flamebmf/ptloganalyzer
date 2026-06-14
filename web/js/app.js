@@ -127,6 +127,84 @@ function convertLogIds(text) {
   return text.replace(/#(\d+)\b/g, '<a href="#" onclick="event.preventDefault();openLogModal($1);return false" class="log-ref">#$1</a>');
 }
 
+function mdToHtml(text) {
+  if (!text) return '';
+  var codeBlocks = [];
+  var codeBlockId = 0;
+  text = text.replace(/```(\w*)\n([\s\S]*?)```/g, function(m, lang, code) {
+    var id = 'cb_' + (codeBlockId++);
+    codeBlocks[id] = {lang: lang || 'bash', code: code.trim()};
+    return '%%%' + id + '%%%';
+  });
+  // AI-generated headers: === TITLE ===
+  text = text.replace(/^===\s*(.+?)\s*===$/gm, '%%H2%%$1%%/H2%%');
+  text = escHtml(text);
+  // Restore code blocks
+  for (var id in codeBlocks) {
+    var cb = codeBlocks[id];
+    var html = '<div class="code-block" id="' + id + '">'
+      + '<div class="code-block-header">'
+      + '<span>' + escHtml(cb.lang) + '</span>'
+      + '<button class="code-copy-btn" onclick="copyCode(\'' + id + '\')"><i class="bi bi-clipboard"></i></button>'
+      + '</div>'
+      + '<pre><code>' + escHtml(cb.code) + '</code></pre>'
+      + '</div>';
+    text = text.replace('%%%' + id + '%%%', html);
+  }
+  // Restore headers
+  text = text.replace(/%%H2%%(.+?)%%\/H2%%/g, '<h2 class="summary-h2">$1</h2>');
+  // Markdown headers
+  text = text.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  text = text.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  text = text.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+  // Bold/italic
+  text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  text = text.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  // Inline code
+  text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
+  // Numbered lists: group 1. 2. 3. into <ol>
+  text = text.replace(/((?:^\d+\.\s+.+\n?)+)/gm, function(m) {
+    return '<ol>' + m.replace(/^\d+\.\s+(.+)/gm, '<li>$1</li>') + '</ol>';
+  });
+  // Bullet lists: group • or - items into <ul>
+  text = text.replace(/((?:^[•\-]\s+.+\n?)+)/gm, function(m) {
+    return '<ul>' + m.replace(/^[•\-]\s+(.+)/gm, '<li>$1</li>') + '</ul>';
+  });
+  // Wrap <li> items NOT inside <ol>/<ul> — catch stray bullets
+  text = text.replace(/^[•\-]\s+(.+)$/gm, '<li>$1</li>');
+  // Line break consolidation
+  text = text.replace(/\n{2,}/g, '<br><br>');
+  text = text.replace(/\n/g, '<br>');
+  return text;
+}
+
+function copyCode(id) {
+  var block = document.getElementById(id);
+  if (!block) return;
+  var code = block.querySelector('pre code');
+  if (!code) return;
+  var text = code.textContent;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function() {
+      var btn = block.querySelector('.code-copy-btn');
+      btn.innerHTML = '<i class="bi bi-check-lg"></i>';
+      setTimeout(function() { btn.innerHTML = '<i class="bi bi-clipboard"></i>'; }, 2000);
+    }).catch(function(){});
+  } else {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    var btn = block.querySelector('.code-copy-btn');
+    btn.innerHTML = '<i class="bi bi-check-lg"></i>';
+    setTimeout(function() { btn.innerHTML = '<i class="bi bi-clipboard"></i>'; }, 2000);
+  }
+}
+
 (function() {
   var bg=document.getElementById('bgBars');
   if (!bg) {

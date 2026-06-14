@@ -13,7 +13,7 @@ router = APIRouter(tags=["anomalies"])
 async def list_anomalies(
     device_id: int | None = None,
     resolved: bool | None = None,
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(50, ge=1, le=1000),
     offset: int = Query(0, ge=0),
 ):
     result = await db.list_anomalies(

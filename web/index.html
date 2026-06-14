@@ -8,10 +8,8 @@
 <meta name="theme-color" content="#04070d">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📊</text></svg>">
 <title>ptloganalyzer</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<link rel="stylesheet" href="vendor/fonts/roboto/roboto.css?v=__APP_VERSION__">
+<link rel="stylesheet" href="vendor/bootstrap-icons/bootstrap-icons.min.css?v=__APP_VERSION__">
 <link rel="stylesheet" href="css/pt-dark.css?v=__APP_VERSION__">
 </head>
 <body>
@@ -51,9 +49,16 @@
 </div>
 
 <div class="chart-row">
-  <div class="chart-card full" style="height:240px;padding:14px">
-    <div class="card-title" style="margin-bottom:6px"><i class="bi bi-graph-up"></i> <span>Log volume</span></div>
-    <div id="dashVolumeChart" style="height:200px"></div>
+  <div class="chart-card full" style="height:280px;padding:14px">
+    <div class="card-title" style="margin-bottom:6px;display:flex;justify-content:space-between;align-items:center">
+      <span><i class="bi bi-graph-up"></i> <span>Log volume D2D</span></span>
+      <div class="chart-tabs" style="display:flex;gap:4px">
+        <button class="chart-tab active" data-voltab="d2d" onclick="switchVolTab('d2d')">D2D</button>
+        <button class="chart-tab" data-voltab="week" onclick="switchVolTab('week')">Week</button>
+        <button class="chart-tab" data-voltab="month" onclick="switchVolTab('month')">Month</button>
+      </div>
+    </div>
+    <div id="dashVolumeChart" style="height:225px"></div>
   </div>
 </div>
 <div class="chart-row">
@@ -120,7 +125,7 @@
 <footer>ptloganalyzer &copy; <span id="footerYear"></span></footer>
 <script>document.getElementById('footerYear').textContent = new Date().getFullYear()</script>
 
-<script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+<script src="vendor/apexcharts/apexcharts.min.js?v=__APP_VERSION__"></script>
 <script src="js/app.js?v=__APP_VERSION__"></script>
 <script src="js/bg-bars.js?v=__APP_VERSION__"></script>
 <script src="js/charts.js?v=__APP_VERSION__"></script>
@@ -213,11 +218,15 @@ async function loadLogTail() {
 async function loadDashboardCharts() {
   try {
     const data = await apiGet('/api/dashboard/history');
-    const volData = data.volume.map(d => ({ hour: d.hour, count: d.count }));
-    const volYesterday = data.volume_yesterday.map(d => ({ hour: d.hour, count: d.count }));
+    window._volD2D = data.volume.map(d => ({ hour: d.hour, count: d.count }));
+    window._volD2DPrev = data.volume_yesterday.map(d => ({ hour: d.hour, count: d.count }));
+    window._volWeek = (data.volume_week || []).map(d => ({ day: d.day, count: d.count }));
+    window._volWeekPrev = (data.volume_week_prev || []).map(d => ({ day: d.day, count: d.count }));
+    window._volMonth = (data.volume_month || []).map(d => ({ day: d.day, count: d.count }));
+    window._volMonthPrev = (data.volume_month_prev || []).map(d => ({ day: d.day, count: d.count }));
     var volChart = document.getElementById('dashVolumeChart');
     if (volChart && volChart.children.length < 2) {
-      createLogVolumeChart('dashVolumeChart', volData, volYesterday);
+      _volChart = createLogVolumeD2DChart('dashVolumeChart', window._volD2D, window._volD2DPrev);
     }
     const anomalyTrend = data.anomaly_trend.map(d => ({ hour: d.hour, count: d.count }));
     var anomalyEl = document.getElementById('dashAnomalyTrend');

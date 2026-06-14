@@ -53,6 +53,30 @@ async def dashboard_history():
         "WHERE ts > NOW() - INTERVAL '24 hours' AND app_name IS NOT NULL AND app_name != '-' "
         "GROUP BY app_name ORDER BY count DESC LIMIT 10"
     )
+    volume_week = await db.fetch(
+        "SELECT date_trunc('day', ts) AS day, COUNT(*) AS count "
+        "FROM syslog_messages "
+        "WHERE ts > NOW() - INTERVAL '7 days' "
+        "GROUP BY day ORDER BY day"
+    )
+    volume_week_prev = await db.fetch(
+        "SELECT date_trunc('day', ts + INTERVAL '7 days') AS day, COUNT(*) AS count "
+        "FROM syslog_messages "
+        "WHERE ts BETWEEN NOW() - INTERVAL '14 days' AND NOW() - INTERVAL '7 days' "
+        "GROUP BY day ORDER BY day"
+    )
+    volume_month = await db.fetch(
+        "SELECT date_trunc('day', ts) AS day, COUNT(*) AS count "
+        "FROM syslog_messages "
+        "WHERE ts > NOW() - INTERVAL '30 days' "
+        "GROUP BY day ORDER BY day"
+    )
+    volume_month_prev = await db.fetch(
+        "SELECT date_trunc('day', ts + INTERVAL '30 days') AS day, COUNT(*) AS count "
+        "FROM syslog_messages "
+        "WHERE ts BETWEEN NOW() - INTERVAL '60 days' AND NOW() - INTERVAL '30 days' "
+        "GROUP BY day ORDER BY day"
+    )
     anomaly_trend = await db.fetch(
         "SELECT date_trunc('hour', detected_at) AS hour, COUNT(*) AS count "
         "FROM anomalies WHERE detected_at > NOW() - INTERVAL '24 hours' "
@@ -61,6 +85,10 @@ async def dashboard_history():
     return {
         "volume": [dict(r) for r in volume],
         "volume_yesterday": [dict(r) for r in volume_yesterday],
+        "volume_week": [dict(r) for r in volume_week],
+        "volume_week_prev": [dict(r) for r in volume_week_prev],
+        "volume_month": [dict(r) for r in volume_month],
+        "volume_month_prev": [dict(r) for r in volume_month_prev],
         "severity": [dict(r) for r in severity],
         "total": total or 0,
         "top_errors": [dict(r) for r in top_errors],

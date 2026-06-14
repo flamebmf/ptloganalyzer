@@ -17,6 +17,7 @@
   </div>
   <div class="search-bar">
     <select id="deviceFilter"><option value="">All devices</option></select>
+    <button id="groupToggle" class="btn btn-sm btn-outline" style="font-size:.72rem" onclick="toggleGroupBy()"><i class="bi bi-collection"></i> Group by</button>
     <button class="btn btn-primary btn-sm" onclick="loadAnomalies()"><i class="bi bi-arrow-clockwise"></i></button>
   </div>
   <div id="anomalyList"></div>
@@ -39,6 +40,18 @@ var _currentTab = 'active';
 var _pageSize = 20;
 var _currentPage = 0;
 var _totalItems = 0;
+var _groupBy = false;
+
+function toggleGroupBy() {
+  _groupBy = !_groupBy;
+  var btn = document.getElementById('groupToggle');
+  btn.className = 'btn btn-sm ' + (_groupBy ? 'btn-primary' : 'btn-outline');
+  btn.style.fontSize = '.72rem';
+  btn.innerHTML = '<i class="bi bi-collection"></i> Grouped';
+  _currentPage = 0;
+  document.getElementById('pagination').style.display = _groupBy ? 'none' : 'flex';
+  loadAnomalies();
+}
 
 function yandexLinks(text) {
   var m = text.match(/^(.+?) · повтор/);
@@ -55,6 +68,7 @@ function switchTab(tab) {
   document.getElementById('tabActive').className = 'tab-btn' + (tab === 'active' ? ' active' : '');
   document.getElementById('tabResolved').className = 'tab-btn' + (tab === 'resolved' ? ' active' : '');
   document.getElementById('delResolvedBtn').style.display = tab === 'resolved' ? '' : 'none';
+  document.getElementById('pagination').style.display = _groupBy ? 'none' : 'flex';
   loadAnomalies();
 }
 
@@ -62,40 +76,80 @@ async function loadAnomalies() {
   try {
     var deviceId = document.getElementById('deviceFilter').value;
     var resolved = _currentTab === 'resolved';
-    var url = '/api/anomalies?limit=' + _pageSize + '&offset=' + (_currentPage * _pageSize) + '&resolved=' + resolved;
+    var limit = _groupBy ? 500 : _pageSize;
+    var offset = _groupBy ? 0 : (_currentPage * _pageSize);
+    var url = '/api/anomalies?limit=' + limit + '&offset=' + offset + '&resolved=' + resolved;
     if (deviceId) url += '&device_id=' + deviceId;
 
     var data = await apiGet(url);
     _totalItems = data.total || 0;
+    var items = data.items || [];
     var list = document.getElementById('anomalyList');
-    if ((data.items || []).length === 0) {
+
+    if (items.length === 0) {
       list.innerHTML = '<div class="empty-state"><div class="icon"><i class="bi ' + (resolved ? 'bi-check-all' : 'bi-check-circle') + '"></i></div><p>' + (resolved ? 'Решённых аномалий нет' : 'Аномалий не обнаружено') + '</p></div>';
+    } else if (_groupBy) {
+      var groups = {};
+      var totalCrit = 0, totalWarn = 0;
+      items.forEach(function(a) {
+        var host = a.hostname || 'unknown';
+        if (!groups[host]) groups[host] = [];
+        groups[host].push(a);
+        if (a.severity === 'critical') totalCrit++;
+        else if (a.severity === 'warning') totalWarn++;
+      });
+      document.getElementById('critCount').textContent = totalCrit;
+      document.getElementById('warnCount').textContent = totalWarn;
+
+      var hostnames = Object.keys(groups).sort();
+      list.innerHTML = hostnames.map(function(host) {
+        var group = groups[host];
+        var critGroup = group.filter(function(a) { return a.severity === 'critical'; }).length;
+        var warnGroup = group.filter(function(a) { return a.severity === 'warning'; }).length;
+        var badgeHtml = '';
+        if (critGroup) badgeHtml += '<span class="badge badge-err" style="margin-left:4px">' + critGroup + ' critical</span>';
+        if (warnGroup) badgeHtml += '<span class="badge badge-warn" style="margin-left:4px">' + warnGroup + ' warning</span>';
+        return '<div style="margin-bottom:16px">'
+          + '<div style="display:flex;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.08);margin-bottom:4px">'
+          + '<span style="font-weight:700;font-size:.85rem;color:var(--pt-accent2)">' + escHtml(host) + '</span>'
+          + '<span class="badge badge-info" style="margin-left:8px">' + group.length + '</span>'
+          + badgeHtml
+          + '</div>'
+          + group.map(renderAnomalyItem).join('')
+          + '</div>';
+      }).join('');
+      document.getElementById('pagination').style.display = 'none';
     } else {
       var crit = 0, warn = 0;
-      list.innerHTML = data.items.map(function(a) {
+      list.innerHTML = items.map(function(a) {
         if (a.severity === 'critical') crit++;
         else if (a.severity === 'warning') warn++;
-        var icon = a.severity === 'critical' ? 'bi-exclamation-triangle-fill' :
-                   a.severity === 'warning' ? 'bi-exclamation-circle-fill' : 'bi-info-circle-fill';
-        var badge = '';
-        if (a.count > 1) badge = '<span class="badge badge-err" style="margin-left:6px">x' + a.count + '</span>';
-        if (a.resolved_at) badge += '<span class="badge badge-ok" style="margin-left:6px">resolved</span>';
-        var timeStr = formatTime(a.detected_at) + (a.last_seen && a.count > 1 ? ' — ' + formatTime(a.last_seen) : '');
-        if (a.resolved_at) timeStr += ' &middot; resolved: ' + formatTime(a.resolved_at);
-        return '<div class="anomaly-item ' + (a.resolved_at ? 'resolved' : a.severity) + '">'
-          + '<div class="anomaly-icon"><i class="bi ' + icon + '"></i></div>'
-          + '<div style="flex:1">'
-          + '<div class="anomaly-title">' + a.title + badge + '</div>'
-          + (a.description ? '<div class="anomaly-desc">' + yandexLinks(convertLogIds(a.description)) + '</div>' : '')
-          + '<div class="anomaly-time">' + timeStr + (a.hostname ? ' &middot; ' + a.hostname : '') + '</div>'
-          + '<div style="margin-top:6px"><button class="btn btn-sm btn-outline" onclick="openRec(' + a.id + ',\'' + escJs(a.title) + '\')" style="font-size:.72rem"><i class="bi bi-lightbulb"></i> Что можно сделать</button></div>'
-          + '</div></div>';
+        return renderAnomalyItem(a);
       }).join('');
       document.getElementById('critCount').textContent = crit;
       document.getElementById('warnCount').textContent = warn;
+      document.getElementById('pagination').style.display = 'flex';
     }
     renderPagination();
   } catch(err) { showToast('Error: '+err, 'error'); }
+}
+
+function renderAnomalyItem(a) {
+  var icon = a.severity === 'critical' ? 'bi-exclamation-triangle-fill' :
+             a.severity === 'warning' ? 'bi-exclamation-circle-fill' : 'bi-info-circle-fill';
+  var badge = '';
+  if (a.count > 1) badge = '<span class="badge badge-err" style="margin-left:6px">x' + a.count + '</span>';
+  if (a.resolved_at) badge += '<span class="badge badge-ok" style="margin-left:6px">resolved</span>';
+  var timeStr = formatTime(a.detected_at) + (a.last_seen && a.count > 1 ? ' — ' + formatTime(a.last_seen) : '');
+  if (a.resolved_at) timeStr += ' &middot; resolved: ' + formatTime(a.resolved_at);
+  return '<div class="anomaly-item ' + (a.resolved_at ? 'resolved' : a.severity) + '">'
+    + '<div class="anomaly-icon"><i class="bi ' + icon + '"></i></div>'
+    + '<div style="flex:1">'
+    + '<div class="anomaly-title">' + a.title + badge + '</div>'
+    + (a.description ? '<div class="anomaly-desc">' + yandexLinks(convertLogIds(a.description)) + '</div>' : '')
+    + '<div class="anomaly-time">' + timeStr + '</div>'
+    + '<div style="margin-top:6px"><button class="btn btn-sm btn-outline" onclick="openRec(' + a.id + ',\'' + escJs(a.title) + '\')" style="font-size:.72rem"><i class="bi bi-lightbulb"></i> Что можно сделать</button></div>'
+    + '</div></div>';
 }
 
 function renderPagination() {
@@ -133,59 +187,6 @@ function escJs(s) {
   return s.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
 }
 
-function mdToHtml(text) {
-  if (!text) return '';
-  var codeBlocks = [];
-  var codeBlockId = 0;
-  // Extract code blocks first, replace with placeholders
-  text = text.replace(/```(\w*)\n([\s\S]*?)```/g, function(m, lang, code) {
-    var id = 'cb_' + (codeBlockId++);
-    codeBlocks[id] = {lang: lang || 'bash', code: code.trim()};
-    return '%%%' + id + '%%%';
-  });
-  // Escape HTML for remaining text
-  text = escHtml(text);
-  // Restore code blocks with full markup
-  for (var id in codeBlocks) {
-    var cb = codeBlocks[id];
-    var html = '<div class="code-block" id="' + id + '">'
-      + '<div class="code-block-header">'
-      + '<span>' + escHtml(cb.lang) + '</span>'
-      + '<button class="code-copy-btn" onclick="copyCode(\'' + id + '\')"><i class="bi bi-clipboard"></i></button>'
-      + '</div>'
-      + '<pre><code>' + escHtml(cb.code) + '</code></pre>'
-      + '</div>';
-    text = text.replace('%%%' + id + '%%%', html);
-  }
-  // Inline code
-  text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
-  // Headers
-  text = text.replace(/^### (.+)$/gm, '<h3>$1</h3>');
-  text = text.replace(/^## (.+)$/gm, '<h2>$1</h2>');
-  text = text.replace(/^# (.+)$/gm, '<h1>$1</h1>');
-  // Bold/italic
-  text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  text = text.replace(/\*(.+?)\*/g, '<em>$1</em>');
-  // Lists
-  text = text.replace(/^- (.+)/gm, '<li>$1</li>');
-  text = text.replace(/^\d+\. (.+)/gm, '<li>$1</li>');
-  text = text.replace(/\n{2,}/g, '\n');
-  text = text.replace(/\n/g, '<br>');
-  return text;
-}
-
-function copyCode(id) {
-  var block = document.getElementById(id);
-  if (!block) return;
-  var code = block.querySelector('pre code');
-  if (!code) return;
-  navigator.clipboard.writeText(code.textContent).then(function() {
-    var btn = block.querySelector('.code-copy-btn');
-    btn.innerHTML = '<i class="bi bi-check-lg"></i>';
-    setTimeout(function() { btn.innerHTML = '<i class="bi bi-clipboard"></i>'; }, 2000);
-  }).catch(function(){});
-}
-
 function openRec(id, title) {
   var overlay = document.getElementById('recModal');
   var body = document.getElementById('recModalBody');
@@ -205,7 +206,7 @@ function loadRec(id, refresh) {
     if (r.error) {
       body.innerHTML = '<span style="color:#ff5252">Ошибка: ' + r.error + '</span>';
     } else {
-      body.innerHTML = mdToHtml(r.recommendation || '*Нет ответа*')
+      body.innerHTML = convertLogIds(mdToHtml(r.recommendation || '*Нет ответа*'))
         + '<div style="margin-top:16px;display:flex;gap:8px;align-items:center;border-top:1px solid rgba(255,255,255,.06);padding-top:12px">'
         + '<button class="btn btn-sm btn-outline" onclick="loadRec(' + id + ',true)"><i class="bi bi-arrow-clockwise"></i> Обновить</button>'
         + (r.cached ? '<span style="font-size:.72rem;color:var(--pt-muted)"><i class="bi bi-check-circle" style="color:var(--pt-success)"></i> из кэша</span>' : '')

@@ -27,7 +27,7 @@ var ptChartTheme = ptChartTheme || {
   }
 };
 
-function createLogVolumeChart(elId, data, dataYesterday) {
+function createLogVolumeD2DChart(elId, data, dataYesterday) {
   var series = [{
     name: 'Today',
     data: data.map(d => ({ x: d.hour, y: d.count }))
@@ -40,7 +40,7 @@ function createLogVolumeChart(elId, data, dataYesterday) {
   }
   var options = {
     ...ptChartTheme,
-    chart: { type: 'area', height: 200, toolbar: { show: false },
+    chart: { type: 'area', height: 225, toolbar: { show: false },
              background: 'transparent', foreColor: '#7a8294',
              fontFamily: 'Roboto' },
     series: series,
@@ -66,6 +66,108 @@ function createLogVolumeChart(elId, data, dataYesterday) {
   const chart = new ApexCharts(document.getElementById(elId), options);
   chart.render();
   return chart;
+}
+
+function createLogVolumeWeekChart(elId, data, dataPrev) {
+  var series = [{
+    name: 'This week',
+    data: data.map(d => ({ x: d.day, y: d.count }))
+  }];
+  if (dataPrev && dataPrev.length) {
+    series.push({
+      name: 'Last week',
+      data: dataPrev.map(d => ({ x: d.day, y: d.count }))
+    });
+  }
+  var options = {
+    ...ptChartTheme,
+    chart: { type: 'bar', height: 225, toolbar: { show: false },
+             background: 'transparent', foreColor: '#7a8294',
+             fontFamily: 'Roboto' },
+    series: series,
+    colors: ['#00d4ff', 'rgba(122,130,148,.4)'],
+    dataLabels: { enabled: false },
+    plotOptions: {
+      bar: { columnWidth: '50%', borderRadius: 2 }
+    },
+    xaxis: {
+      type: 'datetime',
+      labels: {
+        datetimeUTC: false,
+        format: 'dd.MM',
+        style: { colors: '#7a8294', fontSize: '10px', fontFamily: 'Roboto' }
+      },
+      axisBorder: { show: false },
+      axisTicks: { show: false }
+    },
+    yaxis: {
+      labels: { style: { colors: '#7a8294', fontSize: '10px', fontFamily: 'Roboto' } },
+      forceNiceScale: true
+    }
+  };
+  const chart = new ApexCharts(document.getElementById(elId), options);
+  chart.render();
+  return chart;
+}
+
+function createLogVolumeMonthChart(elId, data, dataPrev) {
+  var series = [{
+    name: 'This month',
+    data: data.map(d => ({ x: d.day, y: d.count }))
+  }];
+  if (dataPrev && dataPrev.length) {
+    series.push({
+      name: 'Last month',
+      data: dataPrev.map(d => ({ x: d.day, y: d.count }))
+    });
+  }
+  var options = {
+    ...ptChartTheme,
+    chart: { type: 'bar', height: 225, toolbar: { show: false },
+             background: 'transparent', foreColor: '#7a8294',
+             fontFamily: 'Roboto' },
+    series: series,
+    colors: ['#7b61ff', 'rgba(122,130,148,.4)'],
+    dataLabels: { enabled: false },
+    plotOptions: {
+      bar: { columnWidth: '70%', borderRadius: 1 }
+    },
+    xaxis: {
+      type: 'datetime',
+      labels: {
+        datetimeUTC: false,
+        format: 'dd.MM',
+        style: { colors: '#7a8294', fontSize: '9px', fontFamily: 'Roboto' }
+      },
+      axisBorder: { show: false },
+      axisTicks: { show: false }
+    },
+    yaxis: {
+      labels: { style: { colors: '#7a8294', fontSize: '10px', fontFamily: 'Roboto' } },
+      forceNiceScale: true
+    }
+  };
+  const chart = new ApexCharts(document.getElementById(elId), options);
+  chart.render();
+  return chart;
+}
+
+var _volChart = null;
+
+function switchVolTab(tab) {
+  document.querySelectorAll('.chart-tab').forEach(function(b) {
+    b.classList.toggle('active', b.getAttribute('data-voltab') === tab);
+  });
+  if (_volChart) { _volChart.destroy(); _volChart = null; }
+  var el = document.getElementById('dashVolumeChart');
+  if (!el) return;
+  if (tab === 'd2d') {
+    _volChart = createLogVolumeD2DChart('dashVolumeChart', window._volD2D || [], window._volD2DPrev || []);
+  } else if (tab === 'week') {
+    _volChart = createLogVolumeWeekChart('dashVolumeChart', window._volWeek || [], window._volWeekPrev || []);
+  } else if (tab === 'month') {
+    _volChart = createLogVolumeMonthChart('dashVolumeChart', window._volMonth || [], window._volMonthPrev || []);
+  }
 }
 
 function createAnomalyTrendChart(elId, data) {

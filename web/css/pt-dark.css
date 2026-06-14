@@ -243,6 +243,12 @@ footer { text-align:center; padding:12px; font-size:.72rem; color:var(--pt-muted
 .summary-tab.active {
   background:rgba(0,212,255,.12); border-color:var(--pt-accent); color:var(--pt-accent);
 }
+.chart-tab {
+  background:transparent; border:1px solid rgba(255,255,255,.08); color:var(--pt-muted);
+  padding:2px 10px; border-radius:4px; cursor:pointer; font-size:.72rem; transition:.2s;
+}
+.chart-tab:hover { color:var(--pt-text); border-color:rgba(255,255,255,.15) }
+.chart-tab.active { background:rgba(0,212,255,.12); border-color:var(--pt-accent); color:var(--pt-accent) }
 .summary-nav { display:flex; align-items:center; gap:4px }
 .summary-date-input {
   background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.08);
@@ -274,6 +280,21 @@ footer { text-align:center; padding:12px; font-size:.72rem; color:var(--pt-muted
   background:rgba(123,97,255,.03); border:1px solid rgba(123,97,255,.1);
   border-radius:10px; padding:14px; margin-bottom:4px; line-height:1.7;
 }
+.summary-block h2.summary-h2 {
+  font-size:.95rem; color:var(--pt-accent); font-weight:700;
+  padding-bottom:6px; margin:18px 0 8px; border-bottom:1px solid rgba(0,212,255,.15);
+  text-transform:none; letter-spacing:0;
+}
+.summary-block h1, .summary-block h2, .summary-block h3 {
+  margin:14px 0 6px; font-weight:700;
+}
+.summary-block h1 { font-size:.95rem; color:var(--pt-accent) }
+.summary-block h2 { font-size:.9rem; color:var(--pt-accent2) }
+.summary-block h3 { font-size:.85rem; color:var(--pt-muted) }
+.summary-block ol, .summary-block ul { padding-left:0; margin:6px 0 }
+.summary-block ol li { margin:2px 0 2px 18px }
+.summary-block ul li { margin:2px 0 2px 16px; list-style:disc }
+.summary-block strong { color:#e4e8ee }
 
 .toast-wrap {
   position:fixed; bottom:20px; right:20px; z-index:999; display:flex;
