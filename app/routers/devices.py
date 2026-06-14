@@ -1,5 +1,6 @@
 # Copyright (c) 2026 PlurumTech.com
 # SPDX-License-Identifier: LicenseRef-Personal-Use-Only
+from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -30,7 +31,13 @@ async def bulk_data():
         "COUNT(*) FILTER (WHERE severity <= 3) AS errors "
         "FROM syslog_messages GROUP BY device_id"
     )
-    stats = {r["device_id"]: {"total": r["total"], "last_seen": r["last_seen"], "errors": r["errors"]} for r in stats_rows}
+    stats = {}
+    for r in stats_rows:
+        online = r["last_seen"] and (datetime.now(timezone.utc) - r["last_seen"]).total_seconds() < 300
+        stats[r["device_id"]] = {
+            "total": r["total"], "last_seen": r["last_seen"],
+            "errors": r["errors"], "online": online,
+        }
     # Anomaly counts per device
     anom_rows = await db.fetch(
         "SELECT device_id, COUNT(*) AS cnt FROM anomalies "

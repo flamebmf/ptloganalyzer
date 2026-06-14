@@ -136,13 +136,14 @@
 async function loadStats() {
   try {
     var devices = await apiGet('/api/devices');
+    var bulk = await apiGet('/api/devices/bulk-data');
     var elDev = document.getElementById('statDevices');
     if (elDev) elDev.textContent = devices.length;
     var active = 0, total = 0;
     for (var d of devices) {
-      var s = await apiGet('/api/devices/' + d.id + '/stats');
+      var s = (bulk.stats || {})[String(d.id)] || {};
       total += s.total || 0;
-      if (s.last_seen) active++;
+      if (s.online) active++;
     }
     var elActive = document.getElementById('statActive');
     if (elActive) elActive.textContent = active;
@@ -176,12 +177,13 @@ async function loadStorage() {
 async function loadDeviceGrid() {
   try {
     var devices = await apiGet('/api/devices');
+    var bulk = await apiGet('/api/devices/bulk-data');
     var el = document.getElementById('dashDeviceGrid');
     if (!el) return;
     var html = '';
     for (var d of devices) {
-      var s = await apiGet('/api/devices/' + d.id + '/stats');
-      var online = s.last_seen ? (Date.now() - new Date(s.last_seen).getTime() < 300000) : false;
+      var s = (bulk.stats || {})[String(d.id)] || {};
+      var online = s.online;
       var lastTime = s.last_seen ? new Date(s.last_seen).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '-';
       html += '<div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:6px 10px;font-size:.75rem;display:flex;align-items:center;gap:6px;flex-wrap:wrap">' +
         '<span style="width:8px;height:8px;border-radius:50%;background:' + (online ? '#00e676' : '#ff5252') + ';flex-shrink:0"></span>' +

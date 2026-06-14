@@ -29,8 +29,8 @@ async function loadDevices() {
     for (var d of devices) {
       var s = (bulk.stats || {})[String(d.id)] || {};
       var lastSeen = s.last_seen ? formatTime(s.last_seen) : '-';
-      var status = s.last_seen ? 'online' : 'offline';
-      if (s.last_seen) active++;
+      var status = s.online ? 'online' : 'offline';
+      if (s.online) active++;
       var chartId = 'miniChart_' + d.id;
       var cardTitle = d.name || d.hostname;
       var cardSub = d.name ? d.hostname : '';
@@ -77,9 +77,9 @@ async function refreshCards() {
       if (!card) continue;
       var s = (bulk.stats || {})[String(d.id)] || {};
       var lastSeen = s.last_seen ? formatTime(s.last_seen) : '-';
-      if (s.last_seen) active++;
-      card.querySelector('.card-status').className = 'card-status ' + (s.last_seen ? 'online' : 'offline');
-      card.querySelector('.card-status').innerHTML = '<i class="bi bi-circle-fill" style="font-size:.6rem"></i> ' + (s.last_seen ? 'online' : 'offline');
+      if (s.online) active++;
+      card.querySelector('.card-status').className = 'card-status ' + (s.online ? 'online' : 'offline');
+      card.querySelector('.card-status').innerHTML = '<i class="bi bi-circle-fill" style="font-size:.6rem"></i> ' + (s.online ? 'online' : 'offline');
       var ls = card.querySelector('.card-lastseen');
       if (ls) ls.textContent = lastSeen;
       var lv = card.querySelector('.card-logvol');
