@@ -278,14 +278,14 @@ async function loadAiTaskConfig() {
     for (var t of tasks) {
       var cur = resp.current[t.id] || {};
       html += '<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">'
-        + '<span style="font-size:.72rem;font-weight:600;min-width:65px;color:var(--pt-muted);text-transform:uppercase;letter-spacing:.5px">' + t.label + '</span>'
-        + '<select id="task-prov-' + t.id + '" onchange="onTaskProviderChange(\'' + t.id + '\')" style="flex:1;min-width:70px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:6px;padding:3px 6px;color:var(--pt-text);font-size:.72rem;outline:none">'
+        + '<span style="font-size:.72rem;font-weight:600;width:68px;flex-shrink:0;color:var(--pt-muted);text-transform:uppercase;letter-spacing:.5px">' + t.label + '</span>'
+        + '<select id="task-prov-' + t.id + '" onchange="onTaskProviderChange(\'' + t.id + '\')" style="width:105px;flex-shrink:0;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:6px;padding:3px 6px;color:var(--pt-text);font-size:.72rem;outline:none">'
         + '<option value="">——</option>'
         + Object.keys(resp.providers).map(function(p) {
             return '<option value="' + p + '"' + (p === cur.provider ? ' selected' : '') + '>' + resp.providers[p].name + '</option>';
           }).join('')
         + '</select>'
-        + '<select id="task-model-' + t.id + '" style="flex:1;min-width:90px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:6px;padding:3px 6px;color:var(--pt-text);font-size:.72rem;outline:none">'
+        + '<select id="task-model-' + t.id + '" style="width:130px;flex-shrink:0;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:6px;padding:3px 6px;color:var(--pt-text);font-size:.72rem;outline:none">'
         + '<option value="">——</option>'
         + '</select>'
         + '</div>';
