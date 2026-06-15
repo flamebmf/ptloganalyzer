@@ -5,7 +5,7 @@
 </div>
 
 <div class="chart-row">
-  <div class="chart-card third">
+  <div class="chart-card half">
     <div class="card-title" style="margin-bottom:16px"><i class="bi bi-info-circle"></i> Система</div>
     <div class="settings-form" id="appInfo"></div>
     <div class="settings-form" style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.06)">
@@ -26,7 +26,7 @@
       <small style="display:block;color:var(--pt-muted);margin-top:4px">Язык ответов AI в почасовых и дневных суммари.</small>
     </div>
   </div>
-  <div class="chart-card third">
+  <div class="chart-card half">
     <div class="card-title" style="margin-bottom:12px"><i class="bi bi-stars"></i> AI провайдер</div>
     <div class="settings-form" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
       <select id="aiProvider" style="width:auto">
@@ -37,7 +37,7 @@
       <span id="aiStatus" class="badge"></span>
       <button class="btn btn-primary btn-sm" onclick="saveProvider()"><i class="bi bi-check-lg"></i></button>
     </div>
-    <div class="settings-form" style="padding-top:10px;border-top:1px solid rgba(255,255,255,.06)">
+    <div class="settings-form" style="padding-top:10px;margin-top:10px;border-top:1px solid rgba(255,255,255,.06)">
       <label style="font-size:.72rem"><i class="bi bi-funnel"></i> Мин. уровень аномалий</label>
       <div style="display:flex;gap:6px;align-items:center">
         <select id="anomalyMinSev" style="flex:1;font-size:.78rem">
@@ -48,10 +48,9 @@
         <button class="btn btn-primary btn-sm" onclick="saveAnomalyMinSev()"><i class="bi bi-check-lg"></i></button>
       </div>
     </div>
-  </div>
-  <div class="chart-card third">
-    <div class="card-title" style="margin-bottom:12px"><i class="bi bi-sliders"></i> Модели AI</div>
-    <div id="aiTaskConfig"></div>
+    <div class="settings-form" style="padding-top:10px;margin-top:10px;border-top:1px solid rgba(255,255,255,.06)">
+      <div id="aiTaskConfig"></div>
+    </div>
   </div>
 </div>
 
