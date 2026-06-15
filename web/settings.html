@@ -5,7 +5,7 @@
 </div>
 
 <div class="chart-row">
-  <div class="chart-card half">
+  <div class="chart-card third">
     <div class="card-title" style="margin-bottom:16px"><i class="bi bi-info-circle"></i> Система</div>
     <div class="settings-form" id="appInfo"></div>
     <div class="settings-form" style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.06)">
@@ -26,29 +26,32 @@
       <small style="display:block;color:var(--pt-muted);margin-top:4px">Язык ответов AI в почасовых и дневных суммари.</small>
     </div>
   </div>
-  <div class="chart-card half">
-    <div class="card-title" style="margin-bottom:16px"><i class="bi bi-stars"></i> AI провайдер</div>
-    <div class="settings-form" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
-      <select id="aiProvider" onchange="showProviderFields()" style="width:auto">
+  <div class="chart-card third">
+    <div class="card-title" style="margin-bottom:12px"><i class="bi bi-stars"></i> AI провайдер</div>
+    <div class="settings-form" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+      <select id="aiProvider" style="width:auto">
         <option value="ollama">Ollama</option>
         <option value="openai">OpenAI</option>
         <option value="routerai">RouterAI</option>
       </select>
       <span id="aiStatus" class="badge"></span>
-      <button class="btn btn-primary btn-sm" onclick="saveProvider()"><i class="bi bi-check-lg"></i> Применить</button>
+      <button class="btn btn-primary btn-sm" onclick="saveProvider()"><i class="bi bi-check-lg"></i></button>
     </div>
-    <div id="aiProviderFields" class="settings-form" style="margin-bottom:12px"></div>
-    <div class="settings-form" style="padding-top:12px;border-top:1px solid rgba(255,255,255,.06)">
-      <label><i class="bi bi-funnel"></i> Мин. уровень аномалий</label>
-      <select id="anomalyMinSev">
-        <option value="info">Info (все)</option>
-        <option value="warning">Warning и выше</option>
-        <option value="critical">Только Critical</option>
-      </select>
-      <button class="btn btn-primary btn-sm" onclick="saveAnomalyMinSev()" style="margin-top:4px"><i class="bi bi-check-lg"></i> Сохранить</button>
-      <small style="display:block;color:var(--pt-muted);margin-top:4px">Аномалии ниже указанного уровня не будут создаваться и отображаться.</small>
+    <div class="settings-form" style="padding-top:10px;border-top:1px solid rgba(255,255,255,.06)">
+      <label style="font-size:.72rem"><i class="bi bi-funnel"></i> Мин. уровень аномалий</label>
+      <div style="display:flex;gap:6px;align-items:center">
+        <select id="anomalyMinSev" style="flex:1;font-size:.78rem">
+          <option value="info">Info</option>
+          <option value="warning">Warning</option>
+          <option value="critical">Critical</option>
+        </select>
+        <button class="btn btn-primary btn-sm" onclick="saveAnomalyMinSev()"><i class="bi bi-check-lg"></i></button>
+      </div>
     </div>
-    <small style="color:var(--pt-muted)">Смена AI провайдера требует перезапуска AI-воркера.</small>
+  </div>
+  <div class="chart-card third">
+    <div class="card-title" style="margin-bottom:12px"><i class="bi bi-sliders"></i> Модели AI</div>
+    <div id="aiTaskConfig"></div>
   </div>
 </div>
 
@@ -80,7 +83,6 @@ async function loadSettings() {
     document.getElementById('aiProvider').value = settings.ai.provider;
     document.getElementById('anomalyMinSev').value = settings.ai.anomaly_min_severity || 'info';
     updateAiStatus(settings.ai);
-    showProviderFields();
   } catch(err) { showToast('Ошибка: '+err, 'error'); }
 }
 
@@ -91,35 +93,6 @@ function updateAiStatus(ai) {
   } else {
     st.className = 'badge badge-ok'; st.textContent = ai.provider;
   }
-}
-
-function showProviderFields() {
-  var p = document.getElementById('aiProvider').value;
-  var el = document.getElementById('aiProviderFields');
-  var fields = {
-    openai: '<label>URL</label><input id="aiOpenaiUrl" style="width:100%;margin-bottom:12px">'
-      + '<label>Chat модель</label><input id="aiOpenaiModel" style="width:100%;margin-bottom:12px">'
-      + '<label>API ключ (только чтение)</label><input id="aiOpenaiKey" readonly style="width:100%">',
-    routerai: '<label>URL</label><input id="aiRouteraiUrl" style="width:100%;margin-bottom:12px">'
-      + '<label>Chat модель</label><input id="aiRouteraiModel" style="width:100%;margin-bottom:12px">'
-      + '<label>API ключ (только чтение)</label><input id="aiRouteraiKey" readonly style="width:100%">',
-    ollama: '<label>URL</label><input id="aiOllamaUrl" style="width:100%;margin-bottom:12px">'
-      + '<label>Chat модель</label><input id="aiOllamaModel" style="width:100%">'
-  };
-  el.innerHTML = fields[p] || '';
-
-  try {
-    apiGet('/api/settings').then(function(s) {
-      if (document.getElementById('aiOpenaiUrl')) document.getElementById('aiOpenaiUrl').value = s.ai.openai.url;
-      if (document.getElementById('aiOpenaiModel')) document.getElementById('aiOpenaiModel').value = s.ai.openai.model;
-      if (document.getElementById('aiOpenaiKey')) document.getElementById('aiOpenaiKey').value = s.ai.openai.has_key ? '*** задан ***' : 'нет';
-      if (document.getElementById('aiRouteraiUrl')) document.getElementById('aiRouteraiUrl').value = s.ai.routerai.url;
-      if (document.getElementById('aiRouteraiModel')) document.getElementById('aiRouteraiModel').value = s.ai.routerai.model;
-      if (document.getElementById('aiRouteraiKey')) document.getElementById('aiRouteraiKey').value = s.ai.routerai.has_key ? '*** задан ***' : 'нет';
-      if (document.getElementById('aiOllamaUrl')) document.getElementById('aiOllamaUrl').value = s.ai.ollama.url;
-      if (document.getElementById('aiOllamaModel')) document.getElementById('aiOllamaModel').value = s.ai.ollama.model;
-    });
-  } catch(e) {}
 }
 
 async function saveProvider() {
@@ -165,8 +138,15 @@ function changeLang() {
 
 async function loadDevices() {
   try {
-    var devices = await apiGet('/api/devices');
+    var [devices, templates] = await Promise.all([
+      apiGet('/api/devices'),
+      apiGet('/api/parse-templates'),
+    ]);
     var el = document.getElementById('deviceList');
+    var tplOpts = '<option value="">-- Без шаблона --</option>';
+    for (var t of templates) {
+      tplOpts += '<option value="' + t.id + '">' + t.name + '</option>';
+    }
     var html = '';
     for (var d of devices) {
       var stats = await apiGet('/api/devices/' + d.id + '/stats');
@@ -180,6 +160,10 @@ async function loadDevices() {
         + '<div style="display:flex;gap:4px;align-items:center;margin-bottom:4px">'
         + '<input id="devName_' + d.id + '" value="' + (d.name || '') + '" placeholder="' + (d.name && d.hostname ? d.hostname : cardTitle) + (d.ip && !d.name ? ' (' + d.ip + ')' : '') + '" style="flex:1;font-weight:700;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:6px;padding:4px 8px;color:var(--pt-text);font-size:.8rem;outline:none">'
         + '<button class="btn btn-sm btn-primary" onclick="saveDeviceName(' + d.id + ')" title="Сохранить имя" style="padding:2px 6px;font-size:.75rem"><i class="bi bi-check-lg"></i></button>'
+        + '</div>'
+        + '<div style="display:flex;gap:4px;align-items:center;margin-bottom:4px">'
+        + '<select id="devTpl_' + d.id + '" style="flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:6px;padding:4px 8px;color:var(--pt-text);font-size:.75rem;outline:none">' + tplOpts + '</select>'
+        + '<button class="btn btn-sm btn-primary" onclick="saveDeviceTemplate(' + d.id + ')" title="Сохранить шаблон" style="padding:2px 6px;font-size:.75rem"><i class="bi bi-check-lg"></i></button>'
         + '</div>'
         + '<div class="card-stat"><span>Logs / 24h</span> <span class="stat-val">' + (stats.total || 0) + '</span></div>'
         + '<div class="card-stat"><span>' + (d.ip || '') + ' &middot; ' + (d.device_type || 'other') + '</span></div>'
@@ -196,6 +180,15 @@ async function loadDevices() {
       html = '<div class="empty-state" style="grid-column:1/-1"><p>Нет устройств. Добавьте через config.yaml.</p></div>';
     }
     el.innerHTML = html;
+    // Set selected template for each device
+    for (var d of devices) {
+      var sel = document.getElementById('devTpl_' + d.id);
+      if (sel && d.template_id) {
+        sel.value = '' + d.template_id;
+      } else if (sel) {
+        sel.value = '';
+      }
+    }
   } catch(err) {}
 }
 
@@ -229,6 +222,15 @@ async function saveDeviceName(id) {
   } catch(err) { showToast('Ошибка: '+err, 'error'); }
 }
 
+async function saveDeviceTemplate(id) {
+  var el = document.getElementById('devTpl_' + id);
+  var val = el.value ? parseInt(el.value) : null;
+  try {
+    await apiPatch('/api/devices/' + id, {template_id: val});
+    showToast('Шаблон сохранён', 'success');
+  } catch(err) { showToast('Ошибка: '+err, 'error'); }
+}
+
 async function clearDeviceLogs(id, name) {
   if (!confirm('Очистить все логи устройства "' + name + '" (' + id + ')? Эмбеддинги и суммаризации тоже будут удалены. Устройство останется.')) return;
   try {
@@ -248,4 +250,74 @@ async function deleteDevice(id, name) {
 
 loadSettings();
 loadDevices();
+loadAiTaskConfig();
+
+var _aiConfigData = null;
+
+async function loadAiTaskConfig() {
+  try {
+    var resp = await apiGet('/api/ai-config');
+    _aiConfigData = resp;
+    var el = document.getElementById('aiTaskConfig');
+    var tasks = [
+      {id: 'summarization', label: 'Суммаризация'},
+      {id: 'anomaly_detection', label: 'Аномалии'},
+      {id: 'embeddings', label: 'Эмбеддинги'},
+    ];
+    var html = '';
+    for (var t of tasks) {
+      var cur = resp.current[t.id] || {};
+      html += '<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">'
+        + '<span style="font-size:.72rem;font-weight:600;min-width:65px;color:var(--pt-muted);text-transform:uppercase;letter-spacing:.5px">' + t.label + '</span>'
+        + '<select id="task-prov-' + t.id + '" onchange="onTaskProviderChange(\'' + t.id + '\')" style="flex:1;min-width:70px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:6px;padding:3px 6px;color:var(--pt-text);font-size:.72rem;outline:none">'
+        + '<option value="">——</option>'
+        + Object.keys(resp.providers).map(function(p) {
+            return '<option value="' + p + '"' + (p === cur.provider ? ' selected' : '') + '>' + resp.providers[p].name + '</option>';
+          }).join('')
+        + '</select>'
+        + '<select id="task-model-' + t.id + '" style="flex:1;min-width:90px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:6px;padding:3px 6px;color:var(--pt-text);font-size:.72rem;outline:none">'
+        + '<option value="">——</option>'
+        + '</select>'
+        + '<button class="btn btn-sm btn-primary" onclick="saveTaskConfig(\'' + t.id + '\')" style="padding:1px 5px;font-size:.65rem"><i class="bi bi-check-lg"></i></button>'
+        + '</div>';
+    }
+    el.innerHTML = html;
+    // Populate model dropdowns
+    for (var t of tasks) {
+      onTaskProviderChange(t.id);
+    }
+  } catch(err) { console.error('aiConfig load error', err); }
+}
+
+function onTaskProviderChange(taskId) {
+  var provSel = document.getElementById('task-prov-' + taskId);
+  var modelSel = document.getElementById('task-model-' + taskId);
+  var provider = provSel.value;
+  var cur = _aiConfigData.current[taskId] || {};
+  modelSel.innerHTML = '<option value="">-- Модель --</option>';
+  if (!provider || !_aiConfigData.providers[provider]) return;
+  var models = _aiConfigData.providers[provider].models || {};
+  var isEmbed = taskId === 'embeddings';
+  for (var m in models) {
+    var mEmbed = m.toLowerCase().indexOf('embed') >= 0;
+    if (isEmbed !== mEmbed) continue;
+    var opt = document.createElement('option');
+    opt.value = m;
+    opt.textContent = models[m];
+    if (m === cur.model) opt.selected = true;
+    modelSel.appendChild(opt);
+  }
+}
+
+async function saveTaskConfig(taskId) {
+  var prov = document.getElementById('task-prov-' + taskId).value;
+  var model = document.getElementById('task-model-' + taskId).value;
+  if (!prov || !model) { showToast('Выберите провайдер и модель', 'error'); return; }
+  var body = {};
+  body[taskId] = {provider: prov, model: model};
+  try {
+    await apiPatch('/api/ai-config', body);
+    showToast('Конфигурация ' + taskId + ' сохранена', 'success');
+  } catch(err) { showToast('Ошибка: '+err, 'error'); }
+}
 </script>

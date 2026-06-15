@@ -111,11 +111,19 @@ $cfg{ai} = {
   summarization => {
     interval_minutes   => 60,
     max_logs_per_batch => 1000,
+    provider           => $ENV{AI_SUMMARIZATION_PROVIDER} // 'routerai',
+    model              => $ENV{AI_SUMMARIZATION_MODEL}    // 'qwen/qwen3.5-9b',
   },
   anomaly_detection => {
     interval_minutes => 15,
     sensitivity      => 'medium',
     min_severity     => 'info',
+    provider         => $ENV{AI_ANOMALY_PROVIDER} // 'routerai',
+    model            => $ENV{AI_ANOMALY_MODEL}    // 'qwen/qwen3.5-9b',
+  },
+  embeddings => {
+    provider => $ENV{AI_EMBEDDINGS_PROVIDER} // 'routerai',
+    model    => $ENV{AI_EMBEDDINGS_MODEL}    // 'openai/text-embedding-3-small',
   },
   language => $ENV{AI_LANGUAGE} // 'ru',
 };
