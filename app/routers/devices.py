@@ -16,11 +16,23 @@ class DeviceUpdate(BaseModel):
     device_type: str | None = None
     enabled: bool | None = None
     ai_enabled: bool | None = None
+    template_id: int | None = None
 
 
 @router.get("/devices")
 async def list_devices():
-    return await db.list_devices()
+    devices = await db.list_devices()
+    last_seen_rows = await db.fetch(
+        "SELECT DISTINCT ON (device_id) device_id, ts AS last_seen "
+        "FROM syslog_messages ORDER BY device_id, ts DESC"
+    )
+    ls_map = {r["device_id"]: r["last_seen"] for r in last_seen_rows}
+    now = datetime.now(timezone.utc)
+    for d in devices:
+        ts = ls_map.get(d["id"])
+        d["last_seen"] = ts
+        d["online"] = bool(ts and (now - ts).total_seconds() < 300)
+    return devices
 
 
 @router.get("/devices/bulk-data")
@@ -58,6 +70,18 @@ async def bulk_data():
             stats[did_key]["anomalies"] = r["cnt"]
         else:
             stats[did_key] = {"anomalies": r["cnt"]}
+    # Last AI summary per device
+    summary_rows = await db.fetch(
+        "SELECT DISTINCT ON (device_id) device_id, created_at AS last_summary_at "
+        "FROM summaries WHERE summary_type IN ('period', 'daily') "
+        "ORDER BY device_id, created_at DESC"
+    )
+    for r in summary_rows:
+        did = r["device_id"]
+        if did in stats:
+            stats[did]["last_summary_at"] = r["last_summary_at"]
+        else:
+            stats[did] = {"last_summary_at": r["last_summary_at"]}
     # Mini-chart data for all devices
     chart_rows = await db.fetch(
         "SELECT device_id, hour, severity, count "
@@ -89,6 +113,10 @@ async def bulk_data():
     return {"stats": stats, "charts": result}
 
 
+@router.get("/parse-templates")
+async def list_templates():
+    return await db.list_templates()
+
 @router.get("/devices/{device_id}")
 async def get_device(device_id: int):
     dev = await db.get_device(device_id)
@@ -100,6 +128,9 @@ async def get_device(device_id: int):
 @router.patch("/devices/{device_id}")
 async def update_device(device_id: int, data: DeviceUpdate):
     kwargs = {k: v for k, v in data.model_dump().items() if v is not None}
+    # Allow explicitly setting template_id to null to clear template
+    if data.template_id is None and "template_id" in data.model_dump(exclude_unset=True):
+        kwargs["template_id"] = None
     if not kwargs:
         raise HTTPException(400, "No fields to update")
     await db.update_device(device_id, **kwargs)
@@ -172,4 +203,7 @@ async def device_stats(device_id: int):
         "FROM syslog_messages WHERE device_id = $1",
         device_id,
     )
-    return dict(row) if row else {"total": 0}
+    result = dict(row) if row else {"total": 0}
+    ts = result.get("last_seen")
+    result["online"] = bool(ts and (datetime.now(timezone.utc) - ts).total_seconds() < 300)
+    return result

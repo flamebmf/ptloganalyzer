@@ -137,13 +137,25 @@ class Scheduler:
                              value=db_task_model)
                     changed = True
 
+            # Summary toggles
+            for key in ("summary_enabled", "daily_summary_enabled"):
+                db_val = await self.db.get_setting(key)
+                if db_val is not None:
+                    current = getattr(self.cfg, key, None)
+                    if str(db_val).lower() != str(current).lower() if current else True:
+                        setattr(self.cfg, key, db_val.lower() == "true")
+                        log.info("summary_toggle_changed", key=key, value=db_val)
+                        changed = True
+
             if changed:
                 self._create_services()
         except Exception as e:
             log.warning("config_check_failed", error=str(e))
 
     async def _run_summarization(self):
-        """Process devices sequentially — one summary per hour, 3 min gap between devices."""
+        if not getattr(self.cfg, "summary_enabled", True):
+            log.info("hourly_summary_disabled")
+            return
         devices = await self.db.list_devices()
         for d in devices:
             if not self._running:
@@ -153,6 +165,9 @@ class Scheduler:
                 await asyncio.sleep(180)  # 3 min between devices
 
     async def _run_daily_summarization(self):
+        if not getattr(self.cfg, "daily_summary_enabled", True):
+            log.info("daily_summary_disabled")
+            return
         devices = await self.db.list_devices()
         for d in devices:
             if self.cfg.ai_enabled and d.get("ai_enabled", True):

@@ -47,3 +47,28 @@ async def search_logs(
         limit=limit,
         offset=offset,
     )
+
+
+@router.get("/diagnostics/linked")
+async def diagnostics_linked():
+    """Check linked_ips/linked_names status in syslog_messages."""
+    total = await db.fetchval("SELECT COUNT(*) FROM syslog_messages")
+    with_links = await db.fetchval(
+        "SELECT COUNT(*) FROM syslog_messages WHERE linked_ips IS NOT NULL"
+    )
+    recent = await db.fetch(
+        "SELECT id, ts, linked_ips, linked_names "
+        "FROM syslog_messages WHERE linked_ips IS NOT NULL "
+        "ORDER BY id DESC LIMIT 3"
+    )
+    cols = await db.fetch(
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_name = 'syslog_messages' "
+        "AND column_name IN ('linked_ips', 'linked_names', 'source_ip')"
+    )
+    return {
+        "columns_exist": [c["column_name"] for c in cols],
+        "total_rows": total,
+        "rows_with_links": with_links,
+        "recent_with_links": [dict(r) for r in recent],
+    }

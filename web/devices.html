@@ -23,14 +23,27 @@ async function loadDevices() {
     var devices = await apiGet('/api/devices');
     var bulk = await apiGet('/api/devices/bulk-data');
     var grid = document.getElementById('deviceGrid');
-    var html = '';
     var active = 0;
 
+    // Augment and sort by last_summary_at desc
     for (var d of devices) {
       var s = (bulk.stats || {})[String(d.id)] || {};
-      var lastSeen = s.last_seen ? formatTime(s.last_seen) : '-';
-      var status = s.online ? 'online' : 'offline';
+      d._stats = s;
+      d._sortTime = s.last_summary_at || s.last_seen || null;
       if (s.online) active++;
+    }
+    devices.sort(function(a, b) {
+      var ta = a._sortTime ? new Date(a._sortTime).getTime() : 0;
+      var tb = b._sortTime ? new Date(b._sortTime).getTime() : 0;
+      return tb - ta;
+    });
+
+    var html = '';
+    for (var d of devices) {
+      var s = d._stats;
+      var lastSeen = s.last_seen ? formatTime(s.last_seen) : '-';
+      var lastSummary = s.last_summary_at ? formatTime(s.last_summary_at) : '-';
+      var status = s.online ? 'online' : 'offline';
       var chartId = 'miniChart_' + d.id;
       var cardTitle = d.name || d.hostname;
       var cardSub = d.name ? d.hostname : '';
@@ -44,6 +57,7 @@ async function loadDevices() {
         + (cardSub ? '<div><span style="color:var(--pt-muted)">' + cardSub + '</span></div>' : '')
         + '<div class="card-stat"><span data-i18n="last_seen">Последний раз</span> <span class="card-lastseen">' + lastSeen + '</span></div>'
         + '<div class="card-stat"><span>Logs / 24h</span> <span class="card-logvol stat-val">' + (s.total || 0) + '</span></div>'
+        + '<div class="card-stat"><span>AI отчёт</span> <span class="card-lastsummary" style="color:var(--pt-accent)">' + lastSummary + '</span></div>'
         + '<div class="card-stat"><span data-i18n="anomalies">Аномалии</span> <span class="card-anomalies">' + (s.anomalies || 0) + '</span></div>'
         + '</div></div>'
         + '<div id="' + chartId + '" style="height:60px;margin:4px 10px 6px"></div>'
@@ -72,17 +86,36 @@ async function refreshCards() {
     var bulk = await apiGet('/api/devices/bulk-data');
     var grid = document.getElementById('deviceGrid');
     if (!grid) return;
+
+    // Sort by last_summary_at (newest first)
+    for (var d of devices) {
+      var s = (bulk.stats || {})[String(d.id)] || {};
+      d._sortTime = s.last_summary_at || s.last_seen || null;
+    }
+    devices.sort(function(a, b) {
+      var ta = a._sortTime ? new Date(a._sortTime).getTime() : 0;
+      var tb = b._sortTime ? new Date(b._sortTime).getTime() : 0;
+      return tb - ta;
+    });
+
     var active = 0;
+    // Reorder DOM to match sorted devices
+    var parent = grid;
     for (var d of devices) {
       var card = document.getElementById('card_' + d.id);
       if (!card) continue;
+      parent.appendChild(card);  // move to end (appending in sorted order)
+
       var s = (bulk.stats || {})[String(d.id)] || {};
       var lastSeen = s.last_seen ? formatTime(s.last_seen) : '-';
+      var lastSummary = s.last_summary_at ? formatTime(s.last_summary_at) : '-';
       if (s.online) active++;
       card.querySelector('.card-status').className = 'card-status ' + (s.online ? 'online' : 'offline');
       card.querySelector('.card-status').innerHTML = '<i class="bi bi-circle-fill" style="font-size:.6rem"></i> ' + (s.online ? 'online' : 'offline');
       var ls = card.querySelector('.card-lastseen');
       if (ls) ls.textContent = lastSeen;
+      var lsum = card.querySelector('.card-lastsummary');
+      if (lsum) lsum.textContent = lastSummary;
       var lv = card.querySelector('.card-logvol');
       if (lv) lv.textContent = s.total || 0;
       var ae = card.querySelector('.card-anomalies');
