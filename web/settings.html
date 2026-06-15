@@ -35,22 +35,19 @@
         <option value="routerai">RouterAI</option>
       </select>
       <span id="aiStatus" class="badge"></span>
-      <button class="btn btn-primary btn-sm" onclick="saveProvider()"><i class="bi bi-check-lg"></i></button>
     </div>
     <div class="settings-form" style="padding-top:10px;margin-top:10px;border-top:1px solid rgba(255,255,255,.06)">
       <label style="font-size:.72rem"><i class="bi bi-funnel"></i> Мин. уровень аномалий</label>
-      <div style="display:flex;gap:6px;align-items:center">
-        <select id="anomalyMinSev" style="flex:1;font-size:.78rem">
-          <option value="info">Info</option>
-          <option value="warning">Warning</option>
-          <option value="critical">Critical</option>
-        </select>
-        <button class="btn btn-primary btn-sm" onclick="saveAnomalyMinSev()"><i class="bi bi-check-lg"></i></button>
-      </div>
+      <select id="anomalyMinSev" style="width:100%;font-size:.78rem">
+        <option value="info">Info</option>
+        <option value="warning">Warning</option>
+        <option value="critical">Critical</option>
+      </select>
     </div>
     <div class="settings-form" style="padding-top:10px;margin-top:10px;border-top:1px solid rgba(255,255,255,.06)">
       <div id="aiTaskConfig"></div>
     </div>
+    <div style="text-align:right;margin-top:12px"><button class="btn btn-primary btn-sm" onclick="saveAiCard()"><i class="bi bi-check-lg"></i> Сохранить</button></div>
   </div>
 </div>
 
@@ -94,19 +91,6 @@ function updateAiStatus(ai) {
   }
 }
 
-async function saveProvider() {
-  var p = document.getElementById('aiProvider').value;
-  if (p !== _currentProvider) {
-    try {
-      var r = await apiPatch('/api/settings', {ai_provider: p});
-      _currentProvider = p;
-      showToast('Провайдер сменён на ' + p + (r.ai_restart_required ? '. Перезапустите AI-воркер.' : ''), 'success');
-    } catch(err) { showToast('Ошибка: '+err, 'error'); }
-  } else {
-    showToast('Провайдер не изменился', 'info');
-  }
-}
-
 async function saveLang() {
   var lang = document.getElementById('langSelect').value;
   try {
@@ -120,14 +104,6 @@ async function saveAiLang() {
   try {
     await apiPatch('/api/settings', {ai_language: lang});
     showToast('Язык AI анализа сохранён: ' + lang + '. Изменения применятся к следующим суммари.', 'success');
-  } catch(err) { showToast('Ошибка: '+err, 'error'); }
-}
-
-async function saveAnomalyMinSev() {
-  var sev = document.getElementById('anomalyMinSev').value;
-  try {
-    await apiPatch('/api/settings', {anomaly_min_severity: sev});
-    showToast('Мин. уровень аномалий: ' + sev, 'success');
   } catch(err) { showToast('Ошибка: '+err, 'error'); }
 }
 
@@ -277,7 +253,6 @@ async function loadAiTaskConfig() {
         + '<select id="task-model-' + t.id + '" style="flex:1;min-width:90px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:6px;padding:3px 6px;color:var(--pt-text);font-size:.72rem;outline:none">'
         + '<option value="">——</option>'
         + '</select>'
-        + '<button class="btn btn-sm btn-primary" onclick="saveTaskConfig(\'' + t.id + '\')" style="padding:1px 5px;font-size:.65rem"><i class="bi bi-check-lg"></i></button>'
         + '</div>';
     }
     el.innerHTML = html;
@@ -308,15 +283,45 @@ function onTaskProviderChange(taskId) {
   }
 }
 
-async function saveTaskConfig(taskId) {
-  var prov = document.getElementById('task-prov-' + taskId).value;
-  var model = document.getElementById('task-model-' + taskId).value;
-  if (!prov || !model) { showToast('Выберите провайдер и модель', 'error'); return; }
-  var body = {};
-  body[taskId] = {provider: prov, model: model};
+async function saveAiCard() {
+  var results = [];
+
+  // Provider
+  var p = document.getElementById('aiProvider').value;
+  var providerChanged = p !== _currentProvider;
+  if (providerChanged) {
+    try {
+      var r = await apiPatch('/api/settings', {ai_provider: p});
+      _currentProvider = p;
+      results.push('провайдер: ' + p + (r.ai_restart_required ? ' (нужен перезапуск воркера)' : ''));
+    } catch(err) { results.push('провайдер: ошибка'); }
+  }
+
+  // Anomaly min severity
+  var sev = document.getElementById('anomalyMinSev').value;
   try {
-    await apiPatch('/api/ai-config', body);
-    showToast('Конфигурация ' + taskId + ' сохранена', 'success');
-  } catch(err) { showToast('Ошибка: '+err, 'error'); }
+    await apiPatch('/api/settings', {anomaly_min_severity: sev});
+    results.push('аномалии: ' + sev);
+  } catch(err) { results.push('аномалии: ошибка'); }
+
+  // Task configs
+  var aibody = {};
+  var errors = [];
+  for (var t of ['summarization', 'anomaly_detection', 'embeddings']) {
+    var prov = document.getElementById('task-prov-' + t).value;
+    var model = document.getElementById('task-model-' + t).value;
+    if (!prov || !model) { errors.push(t); continue; }
+    aibody[t] = {provider: prov, model: model};
+  }
+  if (errors.length) {
+    results.push('модели: не заполнены (' + errors.join(', ') + ')');
+  } else if (Object.keys(aibody).length) {
+    try {
+      await apiPatch('/api/ai-config', aibody);
+      results.push('модели: ok');
+    } catch(err) { results.push('модели: ошибка'); }
+  }
+
+  showToast('AI: ' + results.join(' | '), 'success');
 }
 </script>
