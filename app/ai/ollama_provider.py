@@ -13,7 +13,7 @@ class OllamaProvider(AIProvider):
         self.chat_model = config.ollama_chat_model
         self.embed_model = config.ollama_embedding_model
         self._dims = config.ollama_embedding_dims
-        self._client = httpx.AsyncClient(timeout=180)
+        self._client = httpx.AsyncClient(timeout=config.ollama_timeout)
 
     @property
     def embedding_dims(self) -> int:

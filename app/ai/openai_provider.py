@@ -14,7 +14,7 @@ class OpenAIProvider(AIProvider):
         self.chat_model = config.openai_chat_model
         self.embed_model = config.openai_embedding_model
         self._dims = config.openai_embedding_dims
-        self._client = httpx.AsyncClient(timeout=180)
+        self._client = httpx.AsyncClient(timeout=config.openai_timeout)
 
     @property
     def embedding_dims(self) -> int:

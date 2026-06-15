@@ -20,9 +20,35 @@ db = Database(config)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     log.info("app_starting", version=config.version)
-    from app.routers.settings import apply_overrides
-    apply_overrides()
     await db.connect()
+    from app.routers.settings import apply_overrides, load_overrides
+    apply_overrides()
+    # Sync runtime overrides to DB (for AI worker)
+    # Seed from config.yaml on first deploy if override doesn't exist
+    ov = load_overrides()
+    for k, cfg_attr in [("ai_provider", "ai_provider"),
+                        ("language", "language"),
+                        ("ai_language", "ai_language"),
+                        ("anomaly_min_severity", "anomaly_min_severity")]:
+        val = ov.get(k)
+        if val:
+            await db.set_setting(k, val)
+        else:
+            existing = await db.get_setting(k)
+            if existing is None:
+                default = str(getattr(config, cfg_attr, ""))
+                if default:
+                    await db.set_setting(k, default)
+
+    # Seed per-task AI config from config.yaml
+    for task in ("summarization", "anomaly_detection", "embeddings"):
+        for key in ("provider", "model"):
+            db_key = f"{task}_{key}"
+            existing = await db.get_setting(db_key)
+            if existing is None:
+                val = getattr(config, f"{task}_{key}", None)
+                if val:
+                    await db.set_setting(db_key, val)
 
     # Seed devices from config
     for d in config.devices:
@@ -67,7 +93,7 @@ def create_app() -> FastAPI:
         }
 
     # Routers
-    from app.routers import devices, logs, anomalies, sse, settings, summaries, dashboard
+    from app.routers import devices, logs, anomalies, sse, settings, summaries, dashboard, ai_config
 
     app.include_router(devices.router, prefix="/api")
     app.include_router(logs.router, prefix="/api")
@@ -76,6 +102,7 @@ def create_app() -> FastAPI:
     app.include_router(settings.router, prefix="/api")
     app.include_router(summaries.router, prefix="/api")
     app.include_router(dashboard.router, prefix="/api")
+    app.include_router(ai_config.router, prefix="/api")
 
     @app.middleware("http")
     async def spa_redirect(request: Request, call_next):

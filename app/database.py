@@ -2,6 +2,9 @@
 # SPDX-License-Identifier: LicenseRef-Personal-Use-Only
 import asyncpg
 import re
+import structlog
+
+log = structlog.get_logger()
 
 
 # ── Core schema. pgvector objects are created separately so they can be added
@@ -103,6 +106,7 @@ class Database:
         )
         await self._ensure_schema()
         await self._ensure_indexes()
+        await self._seed_templates()
 
     async def _ensure_schema(self):
         exists = await self.fetchval(
@@ -202,10 +206,107 @@ class Database:
             await conn.execute(
                 "ALTER TABLE anomalies ADD COLUMN IF NOT EXISTS recommendation TEXT"
             )
+            await conn.execute(
+                "ALTER TABLE syslog_messages ADD COLUMN IF NOT EXISTS linked_ips TEXT[]"
+            )
+            await conn.execute(
+                "ALTER TABLE syslog_messages ADD COLUMN IF NOT EXISTS linked_names TEXT[]"
+            )
+            await conn.execute(
+                "ALTER TABLE syslog_messages ADD COLUMN IF NOT EXISTS source_ip INET"
+            )
+            try:
+                await conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_syslog_linked_ips "
+                    "ON syslog_messages USING GIN (linked_ips)"
+                )
+                await conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_syslog_linked_names "
+                    "ON syslog_messages USING GIN (linked_names)"
+                )
+            except Exception:
+                pass  # GIN on partitioned table needs PG14+
+
+            # ── Parse templates ──
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS parse_templates (
+                    id          SERIAL PRIMARY KEY,
+                    name        VARCHAR(100) NOT NULL UNIQUE,
+                    description TEXT,
+                    parser_type VARCHAR(50) NOT NULL DEFAULT 'default',
+                    config      JSONB DEFAULT '{}',
+                    is_builtin  BOOLEAN DEFAULT false,
+                    created_at  TIMESTAMPTZ DEFAULT NOW()
+                )
+            """)
+            await conn.execute(
+                "ALTER TABLE devices ADD COLUMN IF NOT EXISTS template_id INT REFERENCES parse_templates(id)"
+            )
+
+            # ── Runtime settings (key-value) ──
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS app_settings (
+                    key         VARCHAR(100) PRIMARY KEY,
+                    value       TEXT NOT NULL,
+                    updated_at  TIMESTAMPTZ DEFAULT NOW()
+                )
+            """)
+
+    async def _seed_templates(self):
+        builtins = [
+            ("default", "Автоопределение формата", "default", False),
+            ("rfc3164_tag", "RFC3164 с извлечением APPNAME[PID]: из сообщения", "rfc3164_tag", True),
+            ("aruba_iap", "Aruba IAP (Instant Access Point)", "aruba_iap", True),
+        ]
+        for name, desc, ptype, is_builtin in builtins:
+            existing = await self.fetchval(
+                "SELECT id FROM parse_templates WHERE name = $1", name
+            )
+            if not existing:
+                await self.execute(
+                    "INSERT INTO parse_templates (name, description, parser_type, is_builtin) "
+                    "VALUES ($1, $2, $3, $4)",
+                    name, desc, ptype, is_builtin,
+                )
 
     async def close(self):
         if self._pool:
             await self._pool.close()
+
+    async def backfill_links(self, batch_size: int = 10000):
+        """One-shot backfill of linked_ips/linked_names for old rows (SQL-only, fast)."""
+        log.info("backfill_links_started")
+        done = 0
+        while True:
+            result = await self.execute("""
+                WITH batch AS (
+                    SELECT id, ts FROM syslog_messages
+                    WHERE linked_ips IS NULL OR linked_names IS NULL
+                    ORDER BY ts
+                    LIMIT $1
+                )
+                UPDATE syslog_messages m SET
+                    linked_ips = ARRAY(
+                        SELECT m1[1] FROM regexp_matches(
+                            m.message, '\\m(?:\\d{1,3}\\.){3}\\d{1,3}\\M', 'g'
+                        ) AS m1
+                    ),
+                    linked_names = ARRAY(
+                        SELECT m2[1] FROM regexp_matches(
+                            m.message,
+                            '\\m([a-zA-Z0-9][a-zA-Z0-9.-]*\\.[a-zA-Z]{2,}[a-zA-Z0-9.-]*)\\M',
+                            'g'
+                        ) AS m2
+                    )
+                FROM batch b
+                WHERE m.id = b.id AND m.ts = b.ts
+            """, batch_size)
+            count = int(result.split()[-1])
+            done += count
+            log.info("backfill_links_batch", done=done, batch=count)
+            if count < batch_size:
+                break
+        log.info("backfill_links_done", total=done)
 
     @property
     def pool(self) -> asyncpg.Pool:
@@ -214,6 +315,10 @@ class Database:
 
     async def execute(self, query: str, *args):
         return await self.pool.execute(query, *args)
+
+    async def executemany(self, query: str, args):
+        async with self.pool.acquire() as conn:
+            return await conn.executemany(query, args)
 
     async def fetch(self, query: str, *args):
         return await self.pool.fetch(query, *args)
@@ -243,15 +348,23 @@ class Database:
 
     async def list_devices(self) -> list[dict]:
         rows = await self.fetch(
-            "SELECT id, hostname, ip, name, device_type, enabled, ai_enabled, created_at "
-            "FROM devices ORDER BY hostname"
+            "SELECT d.id, d.hostname, d.ip, d.name, d.device_type, "
+            "d.enabled, d.ai_enabled, d.created_at, d.template_id, "
+            "t.name AS template_name "
+            "FROM devices d "
+            "LEFT JOIN parse_templates t ON t.id = d.template_id "
+            "ORDER BY d.hostname"
         )
         return [dict(r) for r in rows]
 
     async def get_device(self, device_id: int) -> dict | None:
         row = await self.fetchrow(
-            "SELECT id, hostname, ip, name, device_type, enabled, ai_enabled, created_at "
-            "FROM devices WHERE id = $1", device_id
+            "SELECT d.id, d.hostname, d.ip, d.name, d.device_type, "
+            "d.enabled, d.ai_enabled, d.created_at, d.template_id, "
+            "t.name AS template_name "
+            "FROM devices d "
+            "LEFT JOIN parse_templates t ON t.id = d.template_id "
+            "WHERE d.id = $1", device_id
         )
         return dict(row) if row else None
 
@@ -260,6 +373,26 @@ class Database:
         vals = list(kwargs.values()) + [device_id]
         await self.execute(
             f"UPDATE devices SET {sets} WHERE id = ${len(kwargs)+1}", *vals
+        )
+
+    async def list_templates(self) -> list[dict]:
+        rows = await self.fetch(
+            "SELECT id, name, description, parser_type, config, is_builtin "
+            "FROM parse_templates ORDER BY name"
+        )
+        return [dict(r) for r in rows]
+
+    async def get_setting(self, key: str) -> str | None:
+        row = await self.fetchrow(
+            "SELECT value FROM app_settings WHERE key = $1", key
+        )
+        return row["value"] if row else None
+
+    async def set_setting(self, key: str, value: str):
+        await self.execute(
+            "INSERT INTO app_settings (key, value, updated_at) VALUES ($1, $2, NOW()) "
+            "ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = NOW()",
+            key, value,
         )
 
     async def clear_device_logs(self, device_id: int) -> int:
@@ -336,7 +469,8 @@ class Database:
                 f"SELECT COUNT(*) FROM syslog_messages WHERE {where_sql}", *args
             )
         rows = await self.fetch(
-            f"SELECT id, device_id, ts, facility, severity, app_name, message "
+            f"SELECT id, device_id, ts, facility, severity, app_name, message, "
+            f"linked_ips, linked_names, source_ip "
             f"FROM syslog_messages WHERE {where_sql} "
             f"ORDER BY ts DESC LIMIT ${i} OFFSET ${i+1}",
             *args, limit, offset,
@@ -347,7 +481,7 @@ class Database:
     async def get_log_by_id(self, log_id: int) -> dict | None:
         row = await self.fetchrow(
             "SELECT m.id, m.device_id, d.hostname, m.ts, m.facility, m.severity, "
-            "m.app_name, m.msgid, m.message, m.raw, m.created_at "
+            "m.app_name, m.msgid, m.message, m.raw, m.source_ip, m.linked_ips, m.linked_names, m.created_at "
             "FROM syslog_messages m JOIN devices d ON d.id = m.device_id "
             "WHERE m.id = $1", log_id
         )

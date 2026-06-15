@@ -12,7 +12,7 @@ class AnomalyDetector:
     def __init__(self, config, db):
         self.cfg = config
         self.db = db
-        self.provider = create_provider(config)
+        self.provider = create_provider(config, task="anomaly_detection")
 
     async def run_for_device(self, device_id: int, ai_enabled: bool = True):
         # Always run statistical detectors (no AI needed)

@@ -6,7 +6,7 @@ from collections import Counter
 from datetime import datetime, timezone
 
 from app.config import Config
-from app.collector.parser import parse_syslog
+from app.collector.parser import parse_syslog, parse_with_template
 
 
 class SyslogServer:
@@ -19,6 +19,7 @@ class SyslogServer:
         self._batch_lock = asyncio.Lock()
         self._db_pool = None
         self._running = True
+        self._template_cache: dict[str, str] = {}  # source_ip -> parser_type
 
     async def start(self):
         import asyncpg
@@ -111,7 +112,12 @@ class SyslogServer:
             writer.close()
 
     async def _handle_message(self, data: bytes, addr):
-        parsed = parse_syslog(data, addr)
+        source_ip = addr[0] if addr else "0.0.0.0"
+        parser_type = self._template_cache.get(source_ip)
+        if parser_type:
+            parsed = parse_with_template(parser_type, data, addr)
+        else:
+            parsed = parse_syslog(data, addr)
         if not parsed:
             return
 
@@ -126,6 +132,8 @@ class SyslogServer:
                 parsed["message"],
                 parsed["raw"],
                 parsed.get("source_ip", "0.0.0.0"),
+                parsed.get("linked_ips", []),
+                parsed.get("linked_names", []),
             ))
 
         if len(self._batch) >= self.cfg.collector_batch_size:
@@ -163,20 +171,34 @@ class SyslogServer:
                             hn, row["id"],
                         )
                     else:
-                        try:
-                            did = await conn.fetchval(
-                                "INSERT INTO devices (hostname, ip) VALUES ($1, $2::inet) RETURNING id",
-                                hn, sip,
+                        # Not found by IP — try by hostname (device may have changed IP)
+                        row = None
+                        if hn and hn != sip:
+                            row = await conn.fetchrow(
+                                "SELECT id FROM devices WHERE hostname = $1", hn
                             )
-                            device_map[sip] = did
-                        except Exception:
-                            row2 = await conn.fetchrow(
-                                "SELECT id FROM devices WHERE host(ip) = $1", sip
+                        if row:
+                            # Same hostname, different IP — update IP
+                            device_map[sip] = row["id"]
+                            await conn.execute(
+                                "UPDATE devices SET ip = $1::inet WHERE id = $2",
+                                sip, row["id"],
                             )
-                            if row2:
-                                device_map[sip] = row2["id"]
-                            else:
-                                device_map[sip] = 0
+                        else:
+                            try:
+                                did = await conn.fetchval(
+                                    "INSERT INTO devices (hostname, ip) VALUES ($1, $2::inet) RETURNING id",
+                                    hn, sip,
+                                )
+                                device_map[sip] = did
+                            except Exception:
+                                row2 = await conn.fetchrow(
+                                    "SELECT id FROM devices WHERE host(ip) = $1", sip
+                                )
+                                if row2:
+                                    device_map[sip] = row2["id"]
+                                else:
+                                    device_map[sip] = 0
 
                 skipped = [r[8] for r in batch if r[8] not in device_map]
                 if skipped:
@@ -186,6 +208,8 @@ class SyslogServer:
                     (
                         device_map[r[8]], r[1], r[2], r[3],
                         r[4], r[5], r[6], r[7],
+                        r[8],  # source_ip
+                        r[9], r[10],
                     )
                     for r in batch
                     if r[8] in device_map
@@ -195,7 +219,10 @@ class SyslogServer:
                     await conn.copy_records_to_table(
                         "syslog_messages",
                         records=records,
-                        columns=["device_id","ts","facility","severity","app_name","msgid","message","raw"],
+                        columns=["device_id","ts","facility","severity",
+                                 "app_name","msgid","message","raw",
+                                 "source_ip",
+                                 "linked_ips","linked_names"],
                     )
                     # Update hourly stats
                     stats_counter = Counter()
@@ -212,6 +239,24 @@ class SyslogServer:
                             "DO UPDATE SET count = log_stats_hourly.count + EXCLUDED.count",
                             [(k[0], k[1], k[2], v) for k, v in stats_counter.items()],
                         )
+
+                    # Update template cache for known devices
+                    dids = set(r[0] for r in records)
+                    tpl_rows = await conn.fetch(
+                        "SELECT d.id, t.parser_type "
+                        "FROM devices d "
+                        "LEFT JOIN parse_templates t ON t.id = d.template_id "
+                        "WHERE d.id = ANY($1::int[]) AND t.parser_type IS NOT NULL",
+                        list(dids),
+                    )
+                    sip_to_did = {r[8]: r[0] for r in records}
+                    for tpl_row in tpl_rows:
+                        did = tpl_row["id"]
+                        ptype = tpl_row["parser_type"]
+                        for sip, d in sip_to_did.items():
+                            if d == did:
+                                self._template_cache[sip] = ptype
+
                     dev_ids = set(r[0] for r in records)
                     self.log.info("batch_inserted", count=len(records), device_ids=list(dev_ids))
         except Exception as e:

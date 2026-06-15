@@ -347,7 +347,8 @@ input[readonly] { cursor:default; opacity:.9; background:rgba(255,255,255,.04) !
   background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.08);
   border-radius:8px; padding:8px 12px; color:var(--pt-text); outline:none;
 }
-.settings-form select option { background:#0a0f16; color:var(--pt-text) }
+.settings-form select option,
+select option { background:#0a0f16; color:var(--pt-text) }
 
 .modal-overlay {
   position:fixed; top:0; left:0; width:100%; height:100%;

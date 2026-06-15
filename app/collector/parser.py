@@ -56,6 +56,15 @@ def parse_timestamp(ts_str: str) -> datetime:
     return datetime.now(timezone.utc).astimezone()
 
 
+def _extract_links(result: dict) -> dict:
+    """Add linked_ips/linked_names to parsed result from message text."""
+    msg = result.get("message") or ""
+    ips, names = extract_links(msg)
+    result["linked_ips"] = ips
+    result["linked_names"] = names
+    return result
+
+
 def parse_syslog(data: bytes, source_addr: tuple | None = None) -> dict | None:
     try:
         raw = data.decode("utf-8", errors="replace").strip()
@@ -75,7 +84,7 @@ def parse_syslog(data: bytes, source_addr: tuple | None = None) -> dict | None:
         proc_id = m.group(6) or ""
         msg_id = m.group(7) or ""
         msg = m.group(8) or ""
-        return {
+        return _extract_links({
             "facility": facility,
             "severity": severity,
             "timestamp": ts,
@@ -86,7 +95,7 @@ def parse_syslog(data: bytes, source_addr: tuple | None = None) -> dict | None:
             "message": msg,
             "raw": raw,
             "source_ip": source_addr[0] if source_addr else None,
-        }
+        })
 
     m = RFC3164_RE.match(raw)
     if m:
@@ -95,25 +104,32 @@ def parse_syslog(data: bytes, source_addr: tuple | None = None) -> dict | None:
         ts = parse_timestamp(m.group(2))
         hostname = m.group(3)
         msg = m.group(4) or ""
-        return {
+        # Try to extract app_name from "appname[pid]: message" pattern
+        app_name = "-"
+        proc_id = ""
+        app_m = re.match(r"(\S+?)(?:\[(\d+)\])?:\s", msg)
+        if app_m:
+            app_name = app_m.group(1)
+            proc_id = app_m.group(2) or ""
+        return _extract_links({
             "facility": facility,
             "severity": severity,
             "timestamp": ts,
             "hostname": hostname,
-            "app_name": "-",
-            "process_id": "",
+            "app_name": app_name,
+            "process_id": proc_id,
             "msgid": "",
             "message": msg,
             "raw": raw,
             "source_ip": source_addr[0] if source_addr else None,
-        }
+        })
 
     # PRI-only: <PRI>MSG without timestamp/hostname (e.g. embedded/SIP devices)
     m = PRI_ONLY_RE.match(raw)
     if m:
         pri = int(m.group(1))
         facility, severity = parse_priority(pri)
-        return {
+        return _extract_links({
             "facility": facility,
             "severity": severity,
             "timestamp": datetime.now(timezone.utc),
@@ -124,10 +140,10 @@ def parse_syslog(data: bytes, source_addr: tuple | None = None) -> dict | None:
             "message": m.group(2) or raw,
             "raw": raw,
             "source_ip": source_addr[0] if source_addr else None,
-        }
+        })
 
     # Fallback: just store raw (no PRI → default to INFO, not EMERG)
-    return {
+    return _extract_links({
         "facility": 0,
         "severity": 6,
         "timestamp": datetime.now(timezone.utc),
@@ -138,7 +154,7 @@ def parse_syslog(data: bytes, source_addr: tuple | None = None) -> dict | None:
         "message": raw,
         "raw": raw,
         "source_ip": source_addr[0] if source_addr else None,
-    }
+    })
 
 
 def parse_syslog_raw(raw: str, source_addr) -> dict | None:
@@ -170,7 +186,7 @@ def parse_rfc3164_tag(raw: str, source_addr) -> dict | None:
         return None
     pri = int(m.group(1))
     facility, severity = parse_priority(pri)
-    return {
+    return _extract_links({
         "facility": facility,
         "severity": severity,
         "timestamp": parse_timestamp(m.group(2)),
@@ -181,7 +197,7 @@ def parse_rfc3164_tag(raw: str, source_addr) -> dict | None:
         "message": m.group(6) or raw,
         "raw": raw,
         "source_ip": source_addr[0] if source_addr else None,
-    }
+    })
 
 
 def parse_aruba_iap(raw: str, source_addr) -> dict | None:
@@ -197,7 +213,7 @@ def parse_aruba_iap(raw: str, source_addr) -> dict | None:
         ap_match = re.search(r"\|AP\s+(\S+)", msg)
         if ap_match:
             ap_name = ap_match.group(1).rstrip("@")
-    return {
+    return _extract_links({
         "facility": facility,
         "severity": severity,
         "timestamp": parse_timestamp(m.group(2)),
@@ -208,7 +224,7 @@ def parse_aruba_iap(raw: str, source_addr) -> dict | None:
         "message": msg,
         "raw": raw,
         "source_ip": source_addr[0] if source_addr else None,
-    }
+    })
 
 
 PARSERS = {
@@ -240,3 +256,17 @@ FACILITY_NAMES = {
     16: "local0", 17: "local1", 18: "local2", 19: "local3",
     20: "local4", 21: "local5", 22: "local6", 23: "local7",
 }
+
+# IPv4 address pattern
+IP_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
+
+# Hostname-like: word containing a dot and at least one letter (FQDN like db01.example.com)
+HOSTNAME_RE = re.compile(r"\b([a-zA-Z0-9][a-zA-Z0-9.-]*\.[a-zA-Z]{2,}[a-zA-Z0-9.-]*)\b")
+
+
+def extract_links(message: str) -> tuple[list[str], list[str]]:
+    if not message:
+        return [], []
+    ips = list(set(IP_RE.findall(message)))
+    names = list(set(HOSTNAME_RE.findall(message)))
+    return ips, names

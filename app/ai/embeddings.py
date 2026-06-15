@@ -11,7 +11,7 @@ class EmbeddingService:
     def __init__(self, config, db):
         self.cfg = config
         self.db = db
-        self.provider = create_provider(config)
+        self.provider = create_provider(config, task="embeddings")
 
     async def process_unembedded(self, limit: int = 100):
         if not self.provider:

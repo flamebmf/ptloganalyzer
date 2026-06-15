@@ -122,7 +122,7 @@ class Summarizer:
     def __init__(self, config, db):
         self.cfg = config
         self.db = db
-        self.provider = create_provider(config)
+        self.provider = create_provider(config, task="summarization")
         self.language = getattr(config, "ai_language", "ru")
 
     def _prompts(self):
@@ -169,7 +169,7 @@ class Summarizer:
             log_lines = "\n".join(
                 f"#{l.get('id','?')} [{l['ts']}] {l.get('app_name','-')}"
                 f" sev={l.get('severity','?')}: {l['message']}"
-                for l in logs_list[:200]
+                for l in logs_list[:self.cfg.summary_max_logs]
             )
             summary = await self.provider.chat([
                 {"role": "system", "content": p["system_hourly"]},

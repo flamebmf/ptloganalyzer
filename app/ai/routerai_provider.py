@@ -17,7 +17,7 @@ class RouterAIProvider(AIProvider):
             em = "openai/" + em
         self.embed_model = em
         self._dims = config.routerai_embedding_dims
-        self._client = httpx.AsyncClient(timeout=180)
+        self._client = httpx.AsyncClient(timeout=config.routerai_timeout)
 
     @property
     def embedding_dims(self) -> int:

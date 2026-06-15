@@ -7,7 +7,7 @@ from pathlib import Path
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from app.main import config
+from app.main import config, db
 
 router = APIRouter(tags=["settings"])
 
@@ -43,6 +43,7 @@ class SettingsUpdate(BaseModel):
     language: str | None = None
     ai_language: str | None = None
     anomaly_min_severity: str | None = None
+    chat_model: str | None = None
 
 
 @router.get("/settings")
@@ -84,4 +85,14 @@ async def update_settings(data: SettingsUpdate):
         ov = load_overrides()
         ov.update(changed)
         save_overrides(ov)
-    return {"ok": True, "changed": changed, "ai_restart_required": bool(changed.get("ai_provider"))}
+        for k in ("ai_provider", "language", "ai_language", "anomaly_min_severity"):
+            if k in changed:
+                await db.set_setting(k, changed[k])
+    if data.chat_model:
+        provider = config.ai_provider
+        key = f"{provider}_chat_model"
+        await db.set_setting(key, data.chat_model)
+        ov = load_overrides()
+        ov["chat_model"] = data.chat_model
+        save_overrides(ov)
+    return {"ok": True, "changed": changed, "ai_restart_required": False}
