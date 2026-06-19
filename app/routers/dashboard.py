@@ -7,6 +7,8 @@ from time import time
 from fastapi import APIRouter, Query
 
 from app.main import db
+import structlog
+_log = structlog.get_logger()
 
 router = APIRouter(tags=["dashboard"])
 
@@ -21,7 +23,8 @@ _history_cache_ts = 0
 @router.get("/dashboard/history")
 async def dashboard_history():
     global _history_cache, _history_cache_ts
-    if time() - _history_cache_ts < 30 and _history_cache:
+    t0 = time()
+    if time() - _history_cache_ts < 300 and _history_cache:
         return _history_cache
 
     now = datetime.now(timezone.utc)
@@ -97,36 +100,37 @@ async def dashboard_history():
         cutoff_day,
     )
 
-    # Top apps fetch runs in parallel with main queries
-    async def fetch_top_apps():
-        global _top_apps_cache, _top_apps_cache_ts
-        if time() - _top_apps_cache_ts < 300 and _top_apps_cache is not None:
-            return _top_apps_cache
-        try:
-            rows = await asyncio.wait_for(
-                db.fetch(
-                    "SELECT app_name, COUNT(*)::int AS count "
-                    "FROM syslog_messages "
-                    "WHERE ts > NOW() - INTERVAL '24 hours' AND app_name IS NOT NULL AND app_name != '-' "
-                    "GROUP BY app_name ORDER BY count DESC LIMIT 10"
-                ),
-                timeout=15,
-            )
-            _top_apps_cache = rows
-            _top_apps_cache_ts = time()
-            return rows
-        except (asyncio.TimeoutError, Exception):
-            return _top_apps_cache or []
+    # Top apps fetch runs in background (don't block dashboard)
+    global _top_apps_cache, _top_apps_cache_ts
+    if time() - _top_apps_cache_ts > 300:
+        asyncio.create_task(_refresh_top_apps())
 
     all_results = await asyncio.gather(
         vol_today, vol_yesterday, severity_q, top_errors_q, per_device_q,
         week_q, week_prev_q, month_q, month_prev_q, anomaly_q,
-        fetch_top_apps(),
     )
 
     (volume, volume_yesterday, severity, top_errors, per_device,
      volume_week, volume_week_prev, volume_month, volume_month_prev,
-     anomaly_trend, top_apps_rows) = all_results
+     anomaly_trend) = all_results
+
+
+async def _refresh_top_apps():
+    global _top_apps_cache, _top_apps_cache_ts
+    try:
+        rows = await asyncio.wait_for(
+            db.fetch(
+                "SELECT app_name, COUNT(*)::int AS count "
+                "FROM syslog_messages "
+                "WHERE ts > NOW() - INTERVAL '24 hours' AND app_name IS NOT NULL AND app_name != '-' "
+                "GROUP BY app_name ORDER BY count DESC LIMIT 10"
+            ),
+            timeout=10,
+        )
+        _top_apps_cache = rows
+        _top_apps_cache_ts = time()
+    except Exception:
+        pass
 
     total = sum(r["count"] for r in volume) if volume else 0
 
@@ -166,6 +170,7 @@ async def dashboard_history():
     }
     _history_cache = result
     _history_cache_ts = time()
+    _log.info("dashboard_history_done", elapsed_ms=int((time()-t0)*1000))
     return result
 
 
