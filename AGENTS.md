@@ -97,9 +97,19 @@
 - `APP_PARSERS` — registry: `app_id → parse_fn(message) → (app_id, fields) | None`
 - Парсеры работают на `message` тексте, не затрагивают основной парсинг syslog
 - Первый парсер: `zimbramon` — извлекает CSV-поля из Carbonio/Zimbra zmstat
+- `fortigate` — извлекает все key=value поля из FortiOS логов (type, subtype, srcip, dstip, app, sentbyte, rcvdbyte, duration, etc.) — требует BOTH type= AND logid=
+- `postfix` — извлекает postfix-транзакции (process, event, src/dst ip:port, ehlo/quit/commands)
 - `app_metrics(device_id, app_id, ts, fields JSONB)` — структурированные данные приложений
-- `device_apps(device_id, app_id, enabled)` — какие приложения включены для устройства
+- `device_apps(device_id, app_id, enabled)` — какие приложения ВЫКЛЮЧЕНЫ для устройства
+- По умолчанию все новые парсеры включены для всех устройств (если нет явной записи в device_apps)
 - Коллектор: сохраняет лог как есть, потом проверяет включённые приложения для device,
   запускает парсеры, пишет результат в `app_metrics`
 - API: `GET /api/app-metrics/list`, `/series`, `GET/PATCH /api/device-apps/:id`
-- UI: карточка приложения на device.html, выбор метрики, график
+- UI: карточка приложения на device.html (скрыта если нет данных), выбор метрики, график
+
+### Device Page (web/device.html)
+- Аномалии: кликабельные строки открывают detail-модалку (title, severity, time, description)
+- Пагинация аномалий: 10 на страницу
+- AI-сводка: схлопнута до ~10 строк с кнопкой «Читать дальше»
+- Zmstat-карточка: скрыта если нет app_metrics данных, показана при наличии
+- Header stats: `<span class=\"stat-badge\">` компактно, числа с toLocaleString
