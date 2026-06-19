@@ -200,14 +200,18 @@ async def delete_device(device_id: int):
 
 @router.get("/devices/{device_id}/stats")
 async def device_stats(device_id: int):
-    row = await db.fetchrow(
-        "SELECT COUNT(*) AS total, "
-        "MAX(ts) AS last_seen, "
-        "COUNT(*) FILTER (WHERE severity <= 3) AS errors "
-        "FROM syslog_messages WHERE device_id = $1",
+    total_row = await db.fetchrow(
+        "SELECT COALESCE(SUM(count), 0)::bigint AS total, "
+        "COALESCE(SUM(count) FILTER (WHERE severity <= 3), 0)::bigint AS errors "
+        "FROM log_stats_hourly WHERE device_id = $1",
         device_id,
     )
-    result = dict(row) if row else {"total": 0}
-    ts = result.get("last_seen")
+    last_seen_row = await db.fetchrow(
+        "SELECT ts FROM device_last_seen WHERE device_id = $1",
+        device_id,
+    )
+    result = dict(total_row) if total_row else {"total": 0, "errors": 0}
+    ts = last_seen_row["ts"] if last_seen_row else None
+    result["last_seen"] = ts
     result["online"] = bool(ts and (datetime.now(timezone.utc) - ts).total_seconds() < 300)
     return result

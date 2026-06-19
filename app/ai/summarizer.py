@@ -37,20 +37,23 @@ class Summarizer:
         if existing:
             return  # already done for this hour
 
+        limit = self.cfg.summary_max_logs or 500
         logs = await self.db.fetch(
             "SELECT id, ts, facility, severity, app_name, message "
             "FROM syslog_messages WHERE device_id = $1 "
-            "AND ts > $2 AND ts <= $3 ORDER BY ts",
-            device_id, period_start, period_end,
+            "AND ts > $2 AND ts <= $3 "
+            "ORDER BY ts "
+            "LIMIT $4",
+            device_id, period_start, period_end, limit,
         )
+        logs_list = [dict(r) for r in logs]
 
         p = self._prompts()
-        if not logs:
+        if not logs_list:
             log.info("empty_period_skipped", device_id=device_id, device_name=device_name,
                       period_start=period_start.isoformat())
             return
 
-        logs_list = [dict(r) for r in logs]
         try:
             log_lines = "\n".join(
                 f"#{l.get('id','?')} [{l['ts']}] {l.get('app_name','-')}"
