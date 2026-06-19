@@ -11,18 +11,19 @@ from app.collector.app_parsers import APP_PARSERS
 
 
 class SyslogServer:
+    CACHE_TTL = 60  # seconds before re-fetching device_apps/template cache
+
     def __init__(self, config: Config):
         self.cfg = config
         self.log = structlog.get_logger()
         self._udp_server: asyncio.DatagramServer | None = None
         self._tcp_server: asyncio.Server | None = None
         self._batch: list[tuple] = []
-        self._app_metrics_batch: list[tuple] = []
         self._batch_lock = asyncio.Lock()
         self._db_pool = None
         self._running = True
-        self._template_cache: dict[str, str] = {}  # source_ip -> parser_type
-        self._device_apps_cache: dict[int, list[str]] = {}  # device_id -> [app_id]
+        self._template_cache: dict[str, tuple[str, float]] = {}  # source_ip -> (parser_type, ts)
+        self._device_apps_cache: dict[int, tuple[list[str], float]] = {}  # device_id -> ([app_id], ts)
 
     async def start(self):
         import asyncpg
@@ -37,6 +38,8 @@ class SyslogServer:
 
         # Start batch flusher
         asyncio.create_task(self._batch_flusher())
+        # Periodic cache refresh
+        asyncio.create_task(self._cache_refresher())
 
         if self.cfg.collector_udp:
             try:
@@ -114,9 +117,37 @@ class SyslogServer:
         finally:
             writer.close()
 
+    def _get_cached_template(self, source_ip: str) -> str | None:
+        entry = self._template_cache.get(source_ip)
+        if entry:
+            pt, ts = entry
+            if datetime.now(timezone.utc).timestamp() - ts <= self.CACHE_TTL:
+                return pt
+            del self._template_cache[source_ip]
+        return None
+
+    def _set_cached_template(self, source_ip: str, parser_type: str):
+        self._template_cache[source_ip] = (
+            parser_type, datetime.now(timezone.utc).timestamp()
+        )
+
+    def _get_cached_apps(self, device_id: int) -> list[str] | None:
+        entry = self._device_apps_cache.get(device_id)
+        if entry:
+            apps, ts = entry
+            if datetime.now(timezone.utc).timestamp() - ts <= self.CACHE_TTL:
+                return apps
+            del self._device_apps_cache[device_id]
+        return None
+
+    def _set_cached_apps(self, device_id: int, apps: list[str]):
+        self._device_apps_cache[device_id] = (
+            apps, datetime.now(timezone.utc).timestamp()
+        )
+
     async def _handle_message(self, data: bytes, addr):
         source_ip = addr[0] if addr else "0.0.0.0"
-        parser_type = self._template_cache.get(source_ip)
+        parser_type = self._get_cached_template(source_ip)
         if parser_type:
             parsed = parse_with_template(parser_type, data, addr)
         else:
@@ -150,6 +181,21 @@ class SyslogServer:
 
         if len(self._batch) >= self.cfg.collector_batch_size:
             asyncio.ensure_future(self._flush_batch())
+
+    async def _cache_refresher(self):
+        while self._running:
+            await asyncio.sleep(self.CACHE_TTL)
+            now = datetime.now(timezone.utc).timestamp()
+            # Clear stale template entries
+            stale_tpl = [k for k, (_, ts) in self._template_cache.items() if now - ts > self.CACHE_TTL]
+            for k in stale_tpl:
+                del self._template_cache[k]
+            # Clear stale device_apps entries
+            stale_apps = [k for k, (_, ts) in self._device_apps_cache.items() if now - ts > self.CACHE_TTL]
+            for k in stale_apps:
+                del self._device_apps_cache[k]
+            if stale_tpl or stale_apps:
+                self.log.info("cache_refresh", templates=len(stale_tpl), device_apps=len(stale_apps))
 
     async def _batch_flusher(self):
         while self._running:
@@ -242,8 +288,7 @@ class SyslogServer:
                         did = device_map.get(r[8])
                         if not did or not r[11]:
                             continue
-                        # Check which apps are enabled for this device
-                        enabled = self._device_apps_cache.get(did)
+                        enabled = self._get_cached_apps(did)
                         if enabled is None:
                             en_rows = await conn.fetch(
                                 "SELECT app_id FROM device_apps "
@@ -251,7 +296,7 @@ class SyslogServer:
                                 did,
                             )
                             enabled = [e["app_id"] for e in en_rows]
-                            self._device_apps_cache[did] = enabled
+                            self._set_cached_apps(did, enabled)
                         for app_id, fields in r[11]:
                             if app_id in enabled:
                                 app_rows.append((did, app_id, r[1], fields))
@@ -293,7 +338,7 @@ class SyslogServer:
                         ptype = tpl_row["parser_type"]
                         for sip, d in sip_to_did.items():
                             if d == did:
-                                self._template_cache[sip] = ptype
+                                self._set_cached_template(sip, ptype)
 
                     # Update device_last_seen for online tracking
                     max_ts = {}

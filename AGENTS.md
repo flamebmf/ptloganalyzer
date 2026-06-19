@@ -92,3 +92,14 @@
 ### Charts (web/js/charts.js)
 - W2W/M2M: `type: 'area'` (было `bar`), градиентная заливка, smooth stroke
 - Аномалии: линия тренда (линейная регрессия) поверх столбцов + прогноз на следующий час
+
+### App Parsers (app/collector/app_parsers.py)
+- `APP_PARSERS` — registry: `app_id → parse_fn(message) → (app_id, fields) | None`
+- Парсеры работают на `message` тексте, не затрагивают основной парсинг syslog
+- Первый парсер: `zimbramon` — извлекает CSV-поля из Carbonio/Zimbra zmstat
+- `app_metrics(device_id, app_id, ts, fields JSONB)` — структурированные данные приложений
+- `device_apps(device_id, app_id, enabled)` — какие приложения включены для устройства
+- Коллектор: сохраняет лог как есть, потом проверяет включённые приложения для device,
+  запускает парсеры, пишет результат в `app_metrics`
+- API: `GET /api/app-metrics/list`, `/series`, `GET/PATCH /api/device-apps/:id`
+- UI: карточка приложения на device.html, выбор метрики, график
