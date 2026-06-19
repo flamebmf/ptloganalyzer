@@ -11,7 +11,7 @@ from app.collector.app_parsers import APP_PARSERS
 
 
 class SyslogServer:
-    CACHE_TTL = 60  # seconds before re-fetching device_apps/template cache
+    CACHE_TTL = 300  # seconds before re-fetching device_apps/template cache
 
     def __init__(self, config: Config):
         self.cfg = config
