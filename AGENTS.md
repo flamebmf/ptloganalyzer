@@ -99,17 +99,39 @@
 - Первый парсер: `zimbramon` — извлекает CSV-поля из Carbonio/Zimbra zmstat
 - `fortigate` — извлекает все key=value поля из FortiOS логов (type, subtype, srcip, dstip, app, sentbyte, rcvdbyte, duration, etc.) — требует BOTH type= AND logid=
 - `postfix` — извлекает postfix-транзакции (process, event, src/dst ip:port, ehlo/quit/commands)
-- `app_metrics(device_id, app_id, ts, fields JSONB)` — структурированные данные приложений
+- `app_metrics(device_id, app_id, ts, fields JSONB)` — структурированные данные приложений (непартицированная)
 - `device_apps(device_id, app_id, enabled)` — какие приложения ВЫКЛЮЧЕНЫ для устройства
 - По умолчанию все новые парсеры включены для всех устройств (если нет явной записи в device_apps)
 - Коллектор: сохраняет лог как есть, потом проверяет включённые приложения для device,
   запускает парсеры, пишет результат в `app_metrics`
-- API: `GET /api/app-metrics/list`, `/series`, `GET/PATCH /api/device-apps/:id`
-- UI: карточка приложения на device.html (скрыта если нет данных), выбор метрики, график
+- API: `GET /api/app-metrics/list`, `/series`, `/stats` (dim+filter+metric агрегация), `GET/PATCH /api/device-apps/:id`
+- UI: карточка App metrics на device.html, для fortigate — 7 панелей (Source/Dest IPs, Apps, Interfaces, Actions, Threats, Policies)
 
 ### Device Page (web/device.html)
 - Аномалии: кликабельные строки открывают detail-модалку (title, severity, time, description)
 - Пагинация аномалий: 10 на страницу
 - AI-сводка: схлопнута до ~10 строк с кнопкой «Читать дальше»
-- Zmstat-карточка: скрыта если нет app_metrics данных, показана при наличии
-- Header stats: `<span class=\"stat-badge\">` компактно, числа с toLocaleString
+- App metrics карточка: скрыта если нет данных; fortigate — traffic+security панели
+- Графики: Volume (area chart) + Severity (donut) с заголовками
+- Header stats: компактно, числа с toLocaleString
+
+### Dashboard Performance (known issues)
+- `/api/dashboard/history`: 10 запросов параллельно через `asyncio.gather`, кеш 5 мин
+- `top_apps` — фоновый таск, не блокирует дашборд
+- `log_stats_hourly` — 5000 строк, индекс по hour, EXPLAIN=0.5ms
+- PostgreSQL: shared_buffers=2GB, synchronous_commit=off, max_wal_size=8GB
+- `log_stats_daily` — daily rollup, 90-day retention на hourly
+- BRIN индекс на log_stats_hourly(hour) для долгосрочных сканов
+- Проблема: дашборд грузится ~20с несмотря на SQL 0.5ms — причина не найдена
+- Добавлены тайминг-логи `dashboard_history_done` — ждут деплоя
+
+### FortiGate API
+- `GET /api/app-metrics/stats`: агрегация по dimension (srcip,dstip,app,srcintf,action,type,etc.)
+  + опциональный `filter=action:deny` и `metric=sentbyte`
+- Исправлен баг: `fields ? key` → `jsonb_exists(fields, key)` (asyncpg конфликт)
+- Исправлен баг: `ORDER BY sentbyte` → `ORDER BY value` (alias колонки)
+
+### PostgreSQL Config (infra.kube)
+- `shared_buffers=2GB`, `effective_cache_size=6GB`, `synchronous_commit=off`
+- `max_wal_size=8GB`, `checkpoint_timeout=10min`, `wal_buffers=64MB`
+- `work_mem=64MB`, `maintenance_work_mem=512MB`, `random_page_cost=1.1`
