@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 
 from app.config import Config
 from app.collector.parser import parse_syslog, parse_with_template
+from app.collector.app_parsers import APP_PARSERS
 
 
 class SyslogServer:
@@ -16,11 +17,12 @@ class SyslogServer:
         self._udp_server: asyncio.DatagramServer | None = None
         self._tcp_server: asyncio.Server | None = None
         self._batch: list[tuple] = []
-        self._zmstat_batch: list[tuple] = []
+        self._app_metrics_batch: list[tuple] = []
         self._batch_lock = asyncio.Lock()
         self._db_pool = None
         self._running = True
         self._template_cache: dict[str, str] = {}  # source_ip -> parser_type
+        self._device_apps_cache: dict[int, list[str]] = {}  # device_id -> [app_id]
 
     async def start(self):
         import asyncpg
@@ -122,6 +124,14 @@ class SyslogServer:
         if not parsed:
             return
 
+        msg = parsed["message"]
+        # Try all registered app parsers on the message
+        app_hits = []
+        for app_id, parse_fn in APP_PARSERS.items():
+            result = parse_fn(msg)
+            if result:
+                app_hits.append((app_id, result[1]))
+
         async with self._batch_lock:
             self._batch.append((
                 parsed["hostname"],
@@ -130,21 +140,13 @@ class SyslogServer:
                 parsed["severity"],
                 parsed["app_name"],
                 parsed["msgid"],
-                parsed["message"],
+                msg,
                 parsed["raw"],
                 parsed.get("source_ip", "0.0.0.0"),
                 parsed.get("linked_ips", []),
                 parsed.get("linked_names", []),
+                app_hits,  # 12th element: list of (app_id, fields)
             ))
-            zmstat_fields = parsed.get("zmstat_fields")
-            if zmstat_fields:
-                self._zmstat_batch.append((
-                    parsed["hostname"],
-                    parsed["timestamp"],
-                    parsed.get("zmstat_metric", "unknown"),
-                    zmstat_fields,
-                    parsed.get("source_ip", "0.0.0.0"),
-                ))
 
         if len(self._batch) >= self.cfg.collector_batch_size:
             asyncio.ensure_future(self._flush_batch())
@@ -156,12 +158,10 @@ class SyslogServer:
 
     async def _flush_batch(self):
         async with self._batch_lock:
-            if not self._batch and not self._zmstat_batch:
+            if not self._batch:
                 return
             batch = self._batch[:]
-            zmstat_batch = self._zmstat_batch[:]
             self._batch.clear()
-            self._zmstat_batch.clear()
 
         if not self._db_pool:
             return
@@ -236,18 +236,30 @@ class SyslogServer:
                                  "source_ip",
                                  "linked_ips","linked_names"],
                     )
-                    # Insert zmstat metrics
-                    zms = []
-                    for z in zmstat_batch:
-                        did = device_map.get(z[4])
-                        if not did:
+                    # Insert app_metrics for matched app parsers
+                    app_rows = []
+                    for r in batch:
+                        did = device_map.get(r[8])
+                        if not did or not r[11]:
                             continue
-                        zms.append((did, z[1], z[2], z[3]))
-                    if zms:
+                        # Check which apps are enabled for this device
+                        enabled = self._device_apps_cache.get(did)
+                        if enabled is None:
+                            en_rows = await conn.fetch(
+                                "SELECT app_id FROM device_apps "
+                                "WHERE device_id = $1 AND enabled = true",
+                                did,
+                            )
+                            enabled = [e["app_id"] for e in en_rows]
+                            self._device_apps_cache[did] = enabled
+                        for app_id, fields in r[11]:
+                            if app_id in enabled:
+                                app_rows.append((did, app_id, r[1], fields))
+                    if app_rows:
                         await conn.executemany(
-                            "INSERT INTO zmstat_metrics (device_id, ts, metric_name, fields) "
+                            "INSERT INTO app_metrics (device_id, app_id, ts, fields) "
                             "VALUES ($1, $2, $3, $4::jsonb)",
-                            zms,
+                            app_rows,
                         )
 
                     # Update hourly stats

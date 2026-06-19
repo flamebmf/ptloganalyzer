@@ -365,70 +365,65 @@ function carouselGo(i) {
   renderSummaryItem();
 }
 
-var _zmstatChart = null;
+var _appMetricCharts = {};
 
 async function initZmstat() {
   if (!deviceId) return;
   try {
-    var data = await apiGet('/api/zmstat/metrics?device_id=' + deviceId);
+    var data = await apiGet('/api/app-metrics/list?device_id=' + deviceId);
+    var apps = data.apps || [];
     var sel = document.getElementById('zmstatMetric');
-    var metrics = data.metrics || [];
-    sel.innerHTML = '<option value="">— metric —</option>'
-      + metrics.map(function(m) { return '<option value="' + m + '">' + m + '</option>'; }).join('');
-    document.getElementById('zmstatBadge').textContent = metrics.length + ' metrics';
-    if (metrics.length > 0) {
-      sel.value = metrics[0];
-      loadZmstat();
+    document.getElementById('zmstatBadge').textContent = apps.length + ' apps';
+    if (apps.length === 0) {
+      sel.innerHTML = '<option value="">— no data —</option>';
+      document.getElementById('zmstatChart').innerHTML = '<div class="empty-state" style="padding:20px"><p>Нет данных приложений</p></div>';
+      return;
     }
+    sel.innerHTML = '<option value="">— app —</option>'
+      + apps.map(function(a) { return '<option value="' + a + '">' + a + '</option>'; }).join('');
+    sel.value = apps[0];
+    loadZmstat();
   } catch(err) {}
 }
 
 async function loadZmstat() {
   if (!deviceId) return;
-  var metric = document.getElementById('zmstatMetric').value;
-  if (!metric) return;
+  var appId = document.getElementById('zmstatMetric').value;
+  if (!appId) return;
   try {
-    var data = await apiGet('/api/zmstat/series?device_id=' + deviceId + '&metric=' + metric + '&hours=24');
+    var data = await apiGet('/api/app-metrics/series?device_id=' + deviceId + '&app_id=' + appId + '&hours=24');
     var items = data.items || [];
-    if (_zmstatChart) _zmstatChart.destroy();
+    var canvasId = 'zmstatChart';
+    if (_appMetricCharts[appId]) _appMetricCharts[appId].destroy();
     if (items.length === 0) {
-      document.getElementById('zmstatChart').innerHTML = '<div class="empty-state" style="padding:20px"><p>No data</p></div>';
+      document.getElementById(canvasId).innerHTML = '<div class="empty-state" style="padding:20px"><p>No data</p></div>';
       return;
     }
-    // Discover numeric fields
-    var fieldNames = Object.keys(items[0].fields || {});
+    var fieldNames = Object.keys(items[0].fields || {}).filter(function(f) { return f !== '_metric'; });
     var numericFields = fieldNames.filter(function(f) { return typeof items[0].fields[f] === 'number'; });
     if (numericFields.length === 0) {
-      document.getElementById('zmstatChart').innerHTML = '<div class="empty-state" style="padding:20px"><p>No numeric fields</p></div>';
+      document.getElementById(canvasId).innerHTML = '<div class="empty-state" style="padding:20px"><p>No numeric fields</p></div>';
       return;
     }
-    var datasets = numericFields.map(function(f) {
-      var vals = items.map(function(d) { return d.fields[f] != null ? d.fields[f] : null; });
-      // Calculate visible range
-      var nonNull = vals.filter(function(v) { return v != null; });
-      var min = Math.min.apply(null, nonNull);
-      var max = Math.max.apply(null, nonNull);
-      var range = max - min || 1;
+    var colors = ['#00d4ff','#ff5252','#ffd740','#00e676','#7c4dff','#ff6d00','#00bcd4','#e040fb'];
+    var datasets = numericFields.map(function(f, idx) {
       return {
         label: f,
-        data: items.map(function(d, i) { return {x: new Date(d.ts), y: d.fields[f]}; }),
-        borderColor: ['#00d4ff','#ff5252','#ffd740','#00e676','#7c4dff','#ff6d00','#00bcd4','#e040fb'][numericFields.indexOf(f) % 8],
+        data: items.map(function(d) { return {x: new Date(d.ts), y: d.fields[f]}; }),
+        borderColor: colors[idx % colors.length],
         backgroundColor: 'transparent',
         borderWidth: 1.5,
         pointRadius: 0,
         fill: false,
         tension: 0.1,
         spanGaps: true,
-        yAxisID: f === 'fd_count' || numericFields.length === 1 ? 'y' : 'y1',
       };
     });
-    _zmstatChart = new Chart(document.getElementById('zmstatChart'), {
+    _appMetricCharts[appId] = new Chart(document.getElementById(canvasId), {
       type: 'line',
       data: { datasets: datasets },
       options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        animation: false,
+        responsive: true, maintainAspectRatio: false, animation: false,
         interaction: { mode: 'nearest', intersect: false },
         plugins: { legend: { display: true, labels: { boxWidth: 10, font: { size: 10 }, color: '#aaa' } } },
         scales: {

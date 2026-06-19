@@ -271,24 +271,32 @@ class Database:
                 "ALTER TABLE devices ADD COLUMN IF NOT EXISTS template_id INT REFERENCES parse_templates(id)"
             )
 
-            # ── zmstat metrics ──
+            # ── App parsers (per-device structured data, e.g. zmstat) ──
             await conn.execute("""
-                CREATE TABLE IF NOT EXISTS zmstat_metrics (
+                CREATE TABLE IF NOT EXISTS device_apps (
+                    device_id INT NOT NULL REFERENCES devices(id),
+                    app_id    VARCHAR(100) NOT NULL,
+                    enabled   BOOLEAN DEFAULT true,
+                    PRIMARY KEY (device_id, app_id)
+                )
+            """)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS app_metrics (
                     id          BIGSERIAL,
                     device_id   INT NOT NULL REFERENCES devices(id),
+                    app_id      VARCHAR(100) NOT NULL,
                     ts          TIMESTAMPTZ NOT NULL,
-                    metric_name VARCHAR(100) NOT NULL,
                     fields      JSONB NOT NULL DEFAULT '{}',
                     PRIMARY KEY (id, ts)
                 ) PARTITION BY RANGE (ts)
             """)
             await conn.execute("""
-                CREATE TABLE IF NOT EXISTS zmstat_metrics_default
-                PARTITION OF zmstat_metrics DEFAULT
+                CREATE TABLE IF NOT EXISTS app_metrics_default
+                PARTITION OF app_metrics DEFAULT
             """)
             await conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_zmstat_device_metric
-                ON zmstat_metrics(device_id, metric_name, ts DESC)
+                CREATE INDEX IF NOT EXISTS idx_app_metrics_ts
+                ON app_metrics(device_id, app_id, ts DESC)
             """)
 
             # ── Runtime settings (key-value) ──
@@ -449,6 +457,7 @@ class Database:
             await conn.execute("DELETE FROM log_embeddings WHERE device_id = $1", device_id)
             await conn.execute("DELETE FROM summaries WHERE device_id = $1", device_id)
             await conn.execute("DELETE FROM anomalies WHERE device_id = $1", device_id)
+            await conn.execute("DELETE FROM app_metrics WHERE device_id = $1", device_id)
             result = await conn.execute("DELETE FROM syslog_messages WHERE device_id = $1", device_id)
             return int(result.split()[-1]) if result else 0
 
@@ -457,6 +466,8 @@ class Database:
             await conn.execute("DELETE FROM log_embeddings WHERE device_id = $1", device_id)
             await conn.execute("DELETE FROM summaries WHERE device_id = $1", device_id)
             await conn.execute("DELETE FROM anomalies WHERE device_id = $1", device_id)
+            await conn.execute("DELETE FROM app_metrics WHERE device_id = $1", device_id)
+            await conn.execute("DELETE FROM device_apps WHERE device_id = $1", device_id)
             await conn.execute("DELETE FROM syslog_messages WHERE device_id = $1", device_id)
             await conn.execute("DELETE FROM devices WHERE id = $1", device_id)
 
