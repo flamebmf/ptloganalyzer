@@ -149,8 +149,8 @@ async def dashboard_storage():
         return _storage_cache
     results = await asyncio.gather(
         db.fetchval("SELECT pg_database_size(current_database())"),
-        db.fetchval("SELECT COUNT(*) FROM syslog_messages"),
-        db.fetchval("SELECT MIN(ts) FROM syslog_messages"),
+        db.fetchval("SELECT COALESCE(SUM(count), 0)::bigint FROM log_stats_hourly"),
+        db.fetchval("SELECT MIN(hour) FROM log_stats_hourly"),
     )
     db_size, total_logs, oldest = results
     avg_per_day = 0

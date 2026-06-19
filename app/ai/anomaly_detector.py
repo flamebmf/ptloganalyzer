@@ -36,10 +36,10 @@ class AnomalyDetector:
             "SELECT AVG(cnt) AS avg_per_hour, "
             "STDDEV(cnt) AS std_per_hour "
             "FROM ("
-            "  SELECT date_trunc('hour', ts) AS h, COUNT(*) AS cnt "
-            "  FROM syslog_messages WHERE device_id = $1 "
-            "  AND ts > NOW() - INTERVAL '7 days' "
-            "  GROUP BY h"
+            "  SELECT hour, SUM(count) AS cnt "
+            "  FROM log_stats_hourly WHERE device_id = $1 "
+            "  AND hour > NOW() - INTERVAL '7 days' "
+            "  GROUP BY hour"
             ") sub",
             device_id,
         )
@@ -77,8 +77,9 @@ class AnomalyDetector:
 
         # Compare to 24h error rate
         total = await self.db.fetchrow(
-            "SELECT COUNT(*) AS cnt FROM syslog_messages "
-            "WHERE device_id = $1 AND ts > NOW() - INTERVAL '24 hours' "
+            "SELECT COALESCE(SUM(count), 0)::bigint AS cnt "
+            "FROM log_stats_hourly "
+            "WHERE device_id = $1 AND hour > NOW() - INTERVAL '24 hours' "
             "AND severity <= 3",
             device_id,
         )
