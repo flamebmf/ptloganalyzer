@@ -79,7 +79,7 @@
       <button class="btn btn-outline btn-sm" onclick="loadZmstat()"><i class="bi bi-arrow-clockwise"></i></button>
     </div>
   </div>
-  <div id="zmstatChart" style="height:160px"></div>
+  <div id="zmstatContent"></div>
 </div>
 
 <div class="chart-card" style="margin-top:14px">
@@ -484,29 +484,108 @@ async function loadZmstat() {
   if (!deviceId) return;
   var appId = document.getElementById('zmstatMetric').value;
   if (!appId) return;
+  if (appId === 'fortigate') {
+    loadFgTraffic();
+    return;
+  }
   try {
     var data = await apiGet('/api/app-metrics/series?device_id=' + deviceId + '&app_id=' + appId + '&hours=24');
     var items = data.items || [];
-    var canvasId = 'zmstatChart';
-    if (_appMetricCharts[appId]) _appMetricCharts[appId].destroy();
+    if (_appMetricCharts['main']) { _appMetricCharts['main'].destroy(); delete _appMetricCharts['main']; }
+    var container = document.getElementById('zmstatContent');
     if (items.length === 0) {
-      document.getElementById(canvasId).innerHTML = '<div class="empty-state" style="padding:20px"><p>No data</p></div>';
+      container.innerHTML = '<div class="empty-state" style="padding:20px"><p>No data</p></div>';
       return;
     }
     var fieldNames = Object.keys(items[0].fields || {}).filter(function(f) { return f !== '_metric'; });
     var numericFields = fieldNames.filter(function(f) { return typeof items[0].fields[f] === 'number'; });
     if (numericFields.length === 0) {
-      document.getElementById(canvasId).innerHTML = '<div class="empty-state" style="padding:20px"><p>No numeric fields</p></div>';
+      container.innerHTML = '<div class="empty-state" style="padding:20px"><p>No numeric fields</p></div>';
       return;
     }
+    container.innerHTML = '<div id="zmstatLineChart" style="height:160px"></div>';
     var datasets = numericFields.map(function(f) {
-      return {
-        label: f,
-        data: items.map(function(d) { return {x: new Date(d.ts).getTime(), y: d.fields[f]}; })
-      };
+      return { label: f, data: items.map(function(d) { return {x: new Date(d.ts).getTime(), y: d.fields[f]}; }) };
     });
-    _appMetricCharts[appId] = createApexLineChart(canvasId, datasets);
+    _appMetricCharts['main'] = createApexLineChart('zmstatLineChart', datasets);
   } catch(err) { showToast('Error: '+err, 'error'); }
+}
+
+async function loadFgTraffic() {
+  try {
+    // Destroy previous charts
+    Object.keys(_appMetricCharts).forEach(function(k) {
+      if (_appMetricCharts[k]) { _appMetricCharts[k].destroy(); delete _appMetricCharts[k]; }
+    });
+    var container = document.getElementById('zmstatContent');
+    container.innerHTML = ''
+      + '<div class="chart-row" style="margin-bottom:10px">'
+      + '  <div class="chart-card half" style="padding:8px"><div style="font-size:.72rem;color:var(--pt-muted);margin-bottom:4px">Source IPs</div><div id="fgDevSrcIp" style="height:140px"></div></div>'
+      + '  <div class="chart-card half" style="padding:8px"><div style="font-size:.72rem;color:var(--pt-muted);margin-bottom:4px">Dest IPs</div><div id="fgDevDstIp" style="height:140px"></div></div>'
+      + '</div>'
+      + '<div class="chart-row" style="margin-bottom:10px">'
+      + '  <div class="chart-card half" style="padding:8px"><div style="font-size:.72rem;color:var(--pt-muted);margin-bottom:4px">Apps</div><div id="fgDevApp" style="height:140px"></div></div>'
+      + '  <div class="chart-card half" style="padding:8px"><div style="font-size:.72rem;color:var(--pt-muted);margin-bottom:4px">Interfaces</div><div id="fgDevIntf" style="height:140px"></div></div>'
+      + '</div>'
+      + '<div class="chart-row" style="margin-bottom:10px">'
+      + '  <div class="chart-card half" style="padding:8px"><div style="font-size:.72rem;color:var(--pt-muted);margin-bottom:4px">Actions</div><div id="fgDevAction" style="height:140px"></div></div>'
+      + '  <div class="chart-card half" style="padding:8px;overflow:hidden">'
+      + '    <div style="font-size:.72rem;color:var(--pt-muted);margin-bottom:4px">Policies</div>'
+      + '    <div id="fgDevPolicy" style="font-size:.72rem;overflow-y:auto;max-height:140px"></div>'
+      + '  </div>'
+      + '</div>';
+
+    renderFgBar('fgDevSrcIp', 'srcip', 'sentbyte', 'Bytes');
+    renderFgBar('fgDevDstIp', 'dstip', 'sentbyte', 'Bytes');
+    renderFgBar('fgDevApp', 'app', null, 'Sessions');
+    renderFgBar('fgDevIntf', 'srcintf', null, 'Sessions');
+    renderFgBar('fgDevAction', 'action', null, 'Sessions');
+    loadFgPolicies();
+  } catch(err) { showToast('Error: '+err, 'error'); }
+}
+
+async function loadFgPolicies() {
+  try {
+    var data = await apiGet('/api/app-metrics/stats?device_id=' + deviceId + '&app_id=fortigate&dim=policyname&hours=24&limit=10');
+    var items = data.items || [];
+    var el = document.getElementById('fgDevPolicy');
+    if (!el || items.length === 0) return;
+    var maxS = Math.max.apply(null, items.map(function(r) { return r.sessions; }));
+    el.innerHTML = items.map(function(r) {
+      var pct = maxS > 0 ? Math.round(r.sessions / maxS * 100) : 0;
+      return '<div style="display:flex;align-items:center;gap:4px;padding:3px 0">'
+        + '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (r.label||'—') + '</span>'
+        + '<span style="font-size:.68rem;color:var(--pt-muted);min-width:40px;text-align:right">' + r.sessions + '</span>'
+        + '<div style="width:50px;height:5px;background:rgba(255,255,255,.06);border-radius:2px"><div style="width:' + pct + '%;height:100%;background:var(--pt-accent);border-radius:2px"></div></div>'
+        + '</div>';
+    }).join('');
+  } catch(err) {}
+}
+
+async function renderFgBar(elId, dim, metric, unit) {
+  var url = '/api/app-metrics/stats?device_id=' + deviceId + '&app_id=fortigate&dim=' + dim + '&hours=24&limit=8';
+  if (metric) url += '&metric=' + metric;
+  try {
+    var data = await apiGet(url);
+    var items = data.items || [];
+    if (items.length === 0) return;
+    var labels = items.map(function(r) { return String(r.label||'').substring(0,25); });
+    var values = items.map(function(r) { return r.value || r.sessions; });
+    _appMetricCharts[elId] = new ApexCharts(document.getElementById(elId), {
+      ...ptChartTheme,
+      chart: { type: 'bar', toolbar: { show: false }, background: 'transparent',
+               foreColor: '#7a8294', fontFamily: 'Roboto', height: 150 },
+      series: [{ name: unit, data: values }],
+      colors: ['#00d4ff'],
+      plotOptions: { bar: { horizontal: true, borderRadius: 2, barHeight: '60%' } },
+      dataLabels: { enabled: false },
+      xaxis: { categories: labels, labels: { style: { colors: '#7a8294', fontSize: '9px' } } },
+      yaxis: { labels: { style: { colors: '#e4e8ee', fontSize: '10px' }, maxWidth: 150 } },
+      legend: { show: false },
+      tooltip: { theme: 'dark' }
+    });
+    _appMetricCharts[elId].render();
+  } catch(err) {}
 }
 
 function escJs(s) {
