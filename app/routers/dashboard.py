@@ -97,27 +97,38 @@ async def dashboard_history():
         cutoff_day,
     )
 
+    # Top apps fetch runs in parallel with main queries
+    async def fetch_top_apps():
+        global _top_apps_cache, _top_apps_cache_ts
+        if time() - _top_apps_cache_ts < 300 and _top_apps_cache is not None:
+            return _top_apps_cache
+        try:
+            rows = await asyncio.wait_for(
+                db.fetch(
+                    "SELECT app_name, COUNT(*)::int AS count "
+                    "FROM syslog_messages "
+                    "WHERE ts > NOW() - INTERVAL '24 hours' AND app_name IS NOT NULL AND app_name != '-' "
+                    "GROUP BY app_name ORDER BY count DESC LIMIT 10"
+                ),
+                timeout=15,
+            )
+            _top_apps_cache = rows
+            _top_apps_cache_ts = time()
+            return rows
+        except (asyncio.TimeoutError, Exception):
+            return _top_apps_cache or []
+
     all_results = await asyncio.gather(
         vol_today, vol_yesterday, severity_q, top_errors_q, per_device_q,
         week_q, week_prev_q, month_q, month_prev_q, anomaly_q,
+        fetch_top_apps(),
     )
 
     (volume, volume_yesterday, severity, top_errors, per_device,
      volume_week, volume_week_prev, volume_month, volume_month_prev,
-     anomaly_trend) = all_results
+     anomaly_trend, top_apps_rows) = all_results
 
     total = sum(r["count"] for r in volume) if volume else 0
-
-    # Top apps (cached)
-    global _top_apps_cache, _top_apps_cache_ts
-    if time() - _top_apps_cache_ts > 300:
-        _top_apps_cache = await db.fetch(
-            "SELECT app_name, COUNT(*)::int AS count "
-            "FROM syslog_messages "
-            "WHERE ts > NOW() - INTERVAL '24 hours' AND app_name IS NOT NULL AND app_name != '-' "
-            "GROUP BY app_name ORDER BY count DESC LIMIT 10"
-        )
-        _top_apps_cache_ts = time()
 
     # Compute trend forecast (linear regression)
     anomaly_forecast = []
@@ -149,7 +160,7 @@ async def dashboard_history():
         "total": total or 0,
         "top_errors": [dict(r) for r in top_errors],
         "per_device": [dict(r) for r in per_device],
-        "top_apps": [dict(r) for r in _top_apps_cache] if _top_apps_cache else [],
+        "top_apps": [dict(r) for r in top_apps_rows] if top_apps_rows else [],
         "anomaly_trend": [dict(r) for r in anomaly_trend],
         "anomaly_forecast": anomaly_forecast,
     }
