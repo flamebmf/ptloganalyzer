@@ -514,28 +514,28 @@ async function loadFgTraffic() {
     var container = document.getElementById('zmstatContent');
     container.innerHTML = ''
       + '<div class="chart-row" style="margin-bottom:10px">'
-      + '  <div class="chart-card half" style="padding:8px"><div style="font-size:.72rem;color:var(--pt-muted);margin-bottom:4px">Source IPs</div><div id="fgDevSrcIp" style="height:130px"></div></div>'
-      + '  <div class="chart-card half" style="padding:8px"><div style="font-size:.72rem;color:var(--pt-muted);margin-bottom:4px">Dest IPs</div><div id="fgDevDstIp" style="height:130px"></div></div>'
+      + '  <div class="chart-card half" style="padding:8px"><div style="font-size:.72rem;color:var(--pt-muted);margin-bottom:4px">Source IPs</div><div id="fgDevSrcIp" style="height:120px"></div></div>'
+      + '  <div class="chart-card half" style="padding:8px"><div style="font-size:.72rem;color:var(--pt-muted);margin-bottom:4px">Dest IPs</div><div id="fgDevDstIp" style="height:120px"></div></div>'
       + '</div>'
       + '<div class="chart-row" style="margin-bottom:10px">'
-      + '  <div class="chart-card half" style="padding:8px"><div style="font-size:.72rem;color:var(--pt-muted);margin-bottom:4px">Apps</div><div id="fgDevApp" style="height:130px"></div></div>'
-      + '  <div class="chart-card half" style="padding:8px"><div style="font-size:.72rem;color:var(--pt-muted);margin-bottom:4px">Interfaces</div><div id="fgDevIntf" style="height:130px"></div></div>'
+      + '  <div class="chart-card half" style="padding:8px"><div style="font-size:.72rem;color:var(--pt-muted);margin-bottom:4px">Apps</div><div id="fgDevApp" style="height:120px"></div></div>'
+      + '  <div class="chart-card half" style="padding:8px"><div style="font-size:.72rem;color:var(--pt-muted);margin-bottom:4px">Interfaces</div><div id="fgDevIntf" style="height:120px"></div></div>'
       + '</div>'
       + '<div class="chart-row" style="margin-bottom:10px">'
-      + '  <div class="chart-card half" style="padding:8px"><div style="font-size:.72rem;color:var(--pt-muted);margin-bottom:4px">Threats</div><div id="fgDevThreat" style="height:130px"></div></div>'
-      + '  <div class="chart-card half" style="padding:8px"><div style="font-size:.72rem;color:var(--pt-muted);margin-bottom:4px">Blocked Src IPs</div><div id="fgDevBlocked" style="height:130px"></div></div>'
+      + '  <div class="chart-card half" style="padding:8px"><div style="font-size:.72rem;color:var(--pt-muted);margin-bottom:4px">Actions</div><div id="fgDevAction" style="height:120px"></div></div>'
+      + '  <div class="chart-card half" style="padding:8px"><div style="font-size:.72rem;color:var(--pt-muted);margin-bottom:4px">Threats</div><div id="fgDevThreat" style="height:120px"></div></div>'
       + '</div>'
-      + '<div class="chart-card" style="padding:8px;overflow:hidden">'
+      + '<div class="chart-card" style="padding:8px;overflow:hidden;margin-bottom:10px">'
       + '  <div style="font-size:.72rem;color:var(--pt-muted);margin-bottom:4px">Policies</div>'
-      + '  <div id="fgDevPolicy" style="font-size:.72rem;overflow-y:auto;max-height:120px"></div>'
+      + '  <div id="fgDevPolicy" style="font-size:.72rem;overflow-y:auto;max-height:100px"></div>'
       + '</div>';
 
     renderFgBar('fgDevSrcIp', 'srcip', 'sentbyte', 'Bytes');
     renderFgBar('fgDevDstIp', 'dstip', 'sentbyte', 'Bytes');
     renderFgBar('fgDevApp', 'app', null, 'Sessions');
     renderFgBar('fgDevIntf', 'srcintf', null, 'Sessions');
+    renderFgBar('fgDevAction', 'action', null, 'Events');
     renderFgBar('fgDevThreat', 'type', null, 'Events');
-    renderFgBar('fgDevBlocked', 'srcip', null, 'Denied', 'action:deny');
     loadFgPolicies();
   } catch(err) { showToast('Error: '+err, 'error'); }
 }
