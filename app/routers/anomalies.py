@@ -5,6 +5,7 @@ import re
 
 from app.main import db, config
 from app.ai import create_provider
+from app.ai.prompts import RECOMMEND_PROMPT
 
 router = APIRouter(tags=["anomalies"])
 
@@ -72,20 +73,14 @@ async def recommend_anomaly(anomaly_id: int, refresh: bool = False):
         if len(related_logs) > 10:
             log_summary += f"\n... и ещё {len(related_logs) - 10} записей"
 
-    prompt = (
-        f"Ты — эксперт по администрированию Linux и сетевой инфраструктуры. "
-        f"Проанализируй аномалию на устройстве {device_name} ({device_ip}) "
-        f"и дай конкретные рекомендации по устранению.\n\n"
-        f"Заголовок: {anomaly['title']}\n"
-        f"Тип: {anomaly['severity']}\n"
-        f"Количество срабатываний: {anomaly.get('count') or 1}\n"
-        f"Описание: {desc_text or '(нет)'}"
-        f"{log_summary}\n\n"
-        f"Ответь на русском языке в формате:\n"
-        f"## Причина\n(краткий анализ первопричины, 1-2 абзаца)\n"
-        f"## Действия\n(пошаговый план устранения, конкретные команды/настройки)\n"
-        f"## Профилактика\n(что настроить чтобы предотвратить повторение)\n\n"
-        f"Важно: ответ должен уложиться в 3000 токенов. Будь краток и по делу."
+    prompt = RECOMMEND_PROMPT.format(
+        device_name=device_name,
+        device_ip=device_ip,
+        title=anomaly['title'],
+        severity=anomaly['severity'],
+        count=anomaly.get('count') or 1,
+        description=desc_text or '(нет)',
+        log_summary=log_summary,
     )
 
     provider = create_provider(config)

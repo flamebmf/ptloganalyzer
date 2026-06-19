@@ -80,6 +80,8 @@ class Config:
         self.anomaly_sensitivity: str = anom.get("sensitivity", "medium")
         self.anomaly_min_severity: str = anom.get("min_severity", "info")
         self.ai_language: str = ai.get("language", "ru")
+        self.summary_enabled: bool = ai.get("summary_enabled", True)
+        self.daily_summary_enabled: bool = ai.get("daily_summary_enabled", True)
 
         # Per-task model config
         summ = ai.get("summarization", {})
@@ -91,6 +93,37 @@ class Config:
         emb = ai.get("embeddings", {})
         self.embeddings_provider: str = emb.get("provider", "routerai")
         self.embeddings_model: str = emb.get("model", "openai/text-embedding-3-small")
+
+        self.providers: dict = ai.get("providers", {
+            "ollama": {
+                "name": "Ollama",
+                "models": {
+                    "llama3.2:1b": "Llama 3.2 1B",
+                    "llama3.2:3b": "Llama 3.2 3B",
+                    "qwen2.5:7b": "Qwen 2.5 7B",
+                    "qwen3:4b": "Qwen 3 4B",
+                    "deepseek-r1:1.5b": "DeepSeek R1 1.5B",
+                    "nomic-embed-text": "Nomic Embed Text",
+                },
+            },
+            "openai": {
+                "name": "OpenAI",
+                "models": {
+                    "gpt-4o-mini": "GPT-4o Mini",
+                    "gpt-4o": "GPT-4o",
+                    "text-embedding-3-small": "Text Embedding 3 Small",
+                },
+            },
+            "routerai": {
+                "name": "RouterAI",
+                "api_key_env": "ROUTERAI_API_KEY",
+                "models": {
+                    "qwen/qwen3.5-9b": "Qwen 3.5 9B",
+                    "deepseek/deepseek-v4-pro": "DeepSeek V4 Pro",
+                    "openai/text-embedding-3-small": "Text Embedding 3 Small",
+                },
+            },
+        })
 
         w = raw.get("web", {})
         self.web_enabled: bool = w.get("enabled", False)

@@ -2,7 +2,8 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from app.main import config, db
-from app.ai.registry import PROVIDERS, TASKS
+
+TASKS = ["summarization", "anomaly_detection", "embeddings"]
 
 router = APIRouter(tags=["ai_config"])
 
@@ -21,7 +22,7 @@ async def get_ai_config():
             "model": db_model or model,
         }
     return {
-        "providers": {k: {"name": v["name"], "models": v["models"]} for k, v in PROVIDERS.items()},
+        "providers": {k: {"name": v["name"], "models": v["models"]} for k, v in config.providers.items()},
         "current": current,
     }
 

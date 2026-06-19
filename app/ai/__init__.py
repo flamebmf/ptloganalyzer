@@ -70,6 +70,7 @@ def _task_config(config, provider: str, model: str):
     c = _TaskConfig()
     c.ai_enabled = config.ai_enabled
     c.ai_provider = provider
+    c.ai_language = getattr(config, "ai_language", "ru")
 
     # Copy all provider-specific attributes
     for prefix in ("openai", "ollama", "routerai"):

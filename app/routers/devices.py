@@ -23,15 +23,20 @@ class DeviceUpdate(BaseModel):
 async def list_devices():
     devices = await db.list_devices()
     last_seen_rows = await db.fetch(
-        "SELECT DISTINCT ON (device_id) device_id, ts AS last_seen "
-        "FROM syslog_messages ORDER BY device_id, ts DESC"
+        "SELECT device_id, ts AS last_seen FROM device_last_seen"
     )
     ls_map = {r["device_id"]: r["last_seen"] for r in last_seen_rows}
+    stats_rows = await db.fetch(
+        "SELECT device_id, SUM(count)::int AS total "
+        "FROM log_stats_hourly GROUP BY device_id"
+    )
+    stats_map = {r["device_id"]: r["total"] for r in stats_rows}
     now = datetime.now(timezone.utc)
     for d in devices:
         ts = ls_map.get(d["id"])
         d["last_seen"] = ts
         d["online"] = bool(ts and (now - ts).total_seconds() < 300)
+        d["total"] = stats_map.get(d["id"], 0)
     return devices
 
 
@@ -46,8 +51,7 @@ async def bulk_data():
         "GROUP BY device_id"
     )
     last_seen_rows = await db.fetch(
-        "SELECT DISTINCT ON (device_id) device_id, ts AS last_seen "
-        "FROM syslog_messages ORDER BY device_id, ts DESC"
+        "SELECT device_id, ts AS last_seen FROM device_last_seen"
     )
     ls_map = {r["device_id"]: r["last_seen"] for r in last_seen_rows}
     stats = {}
@@ -72,9 +76,9 @@ async def bulk_data():
             stats[did_key] = {"anomalies": r["cnt"]}
     # Last AI summary per device
     summary_rows = await db.fetch(
-        "SELECT DISTINCT ON (device_id) device_id, created_at AS last_summary_at "
+        "SELECT device_id, MAX(created_at) AS last_summary_at "
         "FROM summaries WHERE summary_type IN ('period', 'daily') "
-        "ORDER BY device_id, created_at DESC"
+        "GROUP BY device_id"
     )
     for r in summary_rows:
         did = r["device_id"]

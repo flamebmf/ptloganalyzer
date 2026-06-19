@@ -257,6 +257,21 @@ class SyslogServer:
                             if d == did:
                                 self._template_cache[sip] = ptype
 
+                    # Update device_last_seen for online tracking
+                    max_ts = {}
+                    for r in records:
+                        did = r[0]
+                        if did not in max_ts or r[1] > max_ts[did]:
+                            max_ts[did] = r[1]
+                    if max_ts:
+                        await conn.executemany(
+                            "INSERT INTO device_last_seen (device_id, ts) "
+                            "VALUES ($1, $2) "
+                            "ON CONFLICT (device_id) "
+                            "DO UPDATE SET ts = EXCLUDED.ts",
+                            [(d, t) for d, t in max_ts.items()],
+                        )
+
                     dev_ids = set(r[0] for r in records)
                     self.log.info("batch_inserted", count=len(records), device_ids=list(dev_ids))
         except Exception as e:

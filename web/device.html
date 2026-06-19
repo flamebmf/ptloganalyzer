@@ -100,7 +100,7 @@ async function loadDevice() {
 
   try {
     var dev = await apiGet('/api/devices/' + deviceId);
-    document.getElementById('deviceTitle').textContent = dev.hostname || 'Device #' + deviceId;
+    document.getElementById('deviceTitle').textContent = dev.name || dev.hostname || 'Device #' + deviceId;
     var stats = await apiGet('/api/devices/' + deviceId + '/stats');
     var lastSeen = stats.last_seen ? formatTime(stats.last_seen) : '-';
     document.getElementById('deviceStats').innerHTML =

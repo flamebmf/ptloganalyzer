@@ -147,6 +147,17 @@ class Scheduler:
                         log.info("summary_toggle_changed", key=key, value=db_val)
                         changed = True
 
+            # Provider URLs from DB
+            url_map = {"ollama_url": "ollama_base_url",
+                       "openai_url": "openai_base_url",
+                       "routerai_url": "routerai_base_url"}
+            for db_key, cfg_attr in url_map.items():
+                db_val = await self.db.get_setting(db_key)
+                if db_val and db_val != getattr(self.cfg, cfg_attr, None):
+                    setattr(self.cfg, cfg_attr, db_val)
+                    log.info("provider_url_changed", key=db_key, url=db_val)
+                    changed = True
+
             if changed:
                 self._create_services()
         except Exception as e:
@@ -161,7 +172,7 @@ class Scheduler:
             if not self._running:
                 return
             if self.cfg.ai_enabled and d.get("ai_enabled", True):
-                await self.summarizer.run_for_device(d["id"])
+                await self.summarizer.run_for_device(d["id"], d.get("hostname", ""))
                 await asyncio.sleep(180)  # 3 min between devices
 
     async def _run_daily_summarization(self):
@@ -171,13 +182,13 @@ class Scheduler:
         devices = await self.db.list_devices()
         for d in devices:
             if self.cfg.ai_enabled and d.get("ai_enabled", True):
-                await self.summarizer.run_daily_for_device(d["id"])
+                await self.summarizer.run_daily_for_device(d["id"], d.get("hostname", ""))
 
     async def _run_anomaly_detection(self):
         devices = await self.db.list_devices()
         for d in devices:
             if d["enabled"]:
-                await self.anomaly_detector.run_for_device(d["id"], d.get("ai_enabled", True))
+                await self.anomaly_detector.run_for_device(d["id"], d.get("ai_enabled", True), d.get("hostname", ""))
 
     async def _run_embeddings(self):
         if self.cfg.ai_enabled:

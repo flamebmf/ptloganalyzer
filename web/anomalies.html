@@ -92,7 +92,7 @@ async function loadAnomalies() {
       var groups = {};
       var totalCrit = 0, totalWarn = 0;
       items.forEach(function(a) {
-        var host = a.hostname || 'unknown';
+        var host = a.name || a.hostname || 'unknown';
         if (!groups[host]) groups[host] = [];
         groups[host].push(a);
         if (a.severity === 'critical') totalCrit++;
@@ -145,10 +145,10 @@ function renderAnomalyItem(a) {
   return '<div class="anomaly-item ' + (a.resolved_at ? 'resolved' : a.severity) + '">'
     + '<div class="anomaly-icon"><i class="bi ' + icon + '"></i></div>'
     + '<div style="flex:1">'
-    + '<div class="anomaly-title">' + a.title + badge + '</div>'
-    + (a.description ? '<div class="anomaly-desc">' + yandexLinks(convertLogIds(a.description)) + '</div>' : '')
+    + '<div class="anomaly-title">' + (a.hostname ? '<a href="device.html?id=' + a.device_id + '" style="color:var(--pt-accent2);font-size:.75rem;margin-right:4px;text-decoration:none">' + escHtml(a.name || a.hostname) + '</a>' : '') + convertLogIds(a.title || '', a.device_id) + badge + '</div>'
+    + (a.description ? '<div class="anomaly-desc">' + yandexLinks(convertLogIds(a.description, a.device_id)) + '</div>' : '')
     + '<div class="anomaly-time">' + timeStr + '</div>'
-    + '<div style="margin-top:6px"><button class="btn btn-sm btn-outline" onclick="openRec(' + a.id + ',\'' + escJs(a.title) + '\')" style="font-size:.72rem"><i class="bi bi-lightbulb"></i> Что можно сделать</button></div>'
+    + '<div style="margin-top:6px"><button class="btn btn-sm btn-outline" onclick="openRec(' + a.id + ',\'' + escJs(a.title) + '\',' + (a.device_id || 0) + ')" style="font-size:.72rem"><i class="bi bi-lightbulb"></i> Что можно сделать</button></div>'
     + '</div></div>';
 }
 
@@ -187,7 +187,7 @@ function escJs(s) {
   return s.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
 }
 
-function openRec(id, title) {
+function openRec(id, title, deviceId) {
   var overlay = document.getElementById('recModal');
   var body = document.getElementById('recModalBody');
   var titleEl = document.getElementById('recModalTitle');
@@ -195,6 +195,7 @@ function openRec(id, title) {
   body.innerHTML = '<div class="modal-loading"><div class="spinner"></div><span style="color:var(--pt-muted);font-size:.8rem">Загрузка...</span></div>';
   overlay.style.display = 'flex';
   overlay.dataset.id = id;
+  overlay.dataset.deviceId = deviceId;
   loadRec(id);
 }
 
@@ -206,7 +207,9 @@ function loadRec(id, refresh) {
     if (r.error) {
       body.innerHTML = '<span style="color:#ff5252">Ошибка: ' + r.error + '</span>';
     } else {
-      body.innerHTML = convertLogIds(mdToHtml(r.recommendation || '*Нет ответа*'))
+      var overlay = document.getElementById('recModal');
+      var did = overlay ? parseInt(overlay.dataset.deviceId) : null;
+      body.innerHTML = convertLogIds(mdToHtml(r.recommendation || '*Нет ответа*'), did)
         + '<div style="margin-top:16px;display:flex;gap:8px;align-items:center;border-top:1px solid rgba(255,255,255,.06);padding-top:12px">'
         + '<button class="btn btn-sm btn-outline" onclick="loadRec(' + id + ',true)"><i class="bi bi-arrow-clockwise"></i> Обновить</button>'
         + (r.cached ? '<span style="font-size:.72rem;color:var(--pt-muted)"><i class="bi bi-check-circle" style="color:var(--pt-success)"></i> из кэша</span>' : '')

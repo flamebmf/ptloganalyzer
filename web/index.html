@@ -239,9 +239,10 @@ async function loadDashboardCharts() {
       _volChart = createLogVolumeD2DChart('dashVolumeChart', window._volD2D, window._volD2DPrev);
     }
     const anomalyTrend = data.anomaly_trend.map(d => ({ hour: d.hour, count: d.count }));
+    const anomalyForecast = (data.anomaly_forecast || []).map(d => ({ hour: d.hour, count: d.count }));
     var anomalyEl = document.getElementById('dashAnomalyTrend');
     if (anomalyEl && anomalyEl.children.length < 2) {
-      createAnomalyTrendChart('dashAnomalyTrend', anomalyTrend);
+      createAnomalyTrendChart('dashAnomalyTrend', anomalyTrend, anomalyForecast);
     }
     const sevData = data.severity.map(d => ({ severity: d.severity, count: d.count }));
     const sevChart = document.getElementById('dashSeverityChartInner');

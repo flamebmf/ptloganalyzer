@@ -21,24 +21,18 @@ db = Database(config)
 async def lifespan(app: FastAPI):
     log.info("app_starting", version=config.version)
     await db.connect()
-    from app.routers.settings import apply_overrides, load_overrides
-    apply_overrides()
-    # Sync runtime overrides to DB (for AI worker)
-    # Seed from config.yaml on first deploy if override doesn't exist
-    ov = load_overrides()
+    from app.routers.settings import apply_overrides
+    await apply_overrides()
+    # Seed defaults from config.yaml on first deploy
     for k, cfg_attr in [("ai_provider", "ai_provider"),
                         ("language", "language"),
                         ("ai_language", "ai_language"),
-                        ("anomaly_min_severity", "anomaly_min_severity")]:
-        val = ov.get(k)
-        if val:
-            await db.set_setting(k, val)
-        else:
-            existing = await db.get_setting(k)
-            if existing is None:
-                default = str(getattr(config, cfg_attr, ""))
-                if default:
-                    await db.set_setting(k, default)
+                        ("anomaly_min_severity", "anomaly_min_severity"),
+                        ("summary_enabled", "summary_enabled"),
+                        ("daily_summary_enabled", "daily_summary_enabled")]:
+        existing = await db.get_setting(k)
+        if existing is None:
+            await db.set_setting(k, getattr(config, cfg_attr))
 
     # Seed per-task AI config from config.yaml
     for task in ("summarization", "anomaly_detection", "embeddings"):

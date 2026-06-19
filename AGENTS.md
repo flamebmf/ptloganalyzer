@@ -4,7 +4,16 @@
 - Always propose a plan first and get user confirmation before making code changes.
 - Do not edit files without agreement on the approach.
 
-## Project Context (as of 2026-06-15)
+## Project Context (as of 2026-06-19)
+
+### Pod/Container Names
+- `ptlog-app` (backend) — API сервер (uvicorn, порт 8000)
+- `ptlog-collector` — syslog collector (UDP/TCP 514)
+- `ptlog-ai` — AI worker (summarization, anomalies, embeddings)
+- `ptlog-infra` — PostgreSQL (pgvector, порт 5432)
+- `ptlog-ollama` — LLM сервер (порт 11434)
+- `ptlog-web` — Nginx, статика (порт 80)
+- Полные имена контейнеров в podman: `ptlog-app-backend`, `ptlog-collector-collector`, `ptlog-ai-ai-worker`, `ptlog-infra-postgres`
 
 ### Parse Templates
 - `parse_templates` table: built-in `default`, `rfc3164_tag`, `aruba_iap`
@@ -17,7 +26,7 @@
 - Сидятся из config.yaml при первом деплое (только если ключа нет)
 - При PATCH /api/settings → сохраняются в БД
 - AI worker раз в 5 мин проверяет `ai_provider`, пересоздаёт сервисы без рестарта
-- `apply_overrides()` синхронизирует runtime.json → БД при старте web app
+- `apply_overrides()` читает runtime-настройки из БД в config при старте web app
 
 ### Известные проблемы
 - IAP "2026" год как hostname — лечится шаблоном `aruba_iap`
@@ -28,3 +37,58 @@
 - Per-provider timeout в config.yaml: `ai.openai.timeout`, `ai.ollama.timeout`, `ai.routerai.timeout`
 - Дефолты: OpenAI 180, Ollama 300, RouterAI 180
 - Меняется без рестарта — `_check_config` подхватывает новое значение из БД и пересоздаёт сервисы
+
+### Model Lists (config.yaml)
+- Список моделей для каждого провайдера — в `config.yaml` секция `ai.providers`
+- Генерируется `generate_config.pl`, читается `config.py` → `self.providers`
+- `GET /api/ai-config` отдаёт `config.providers` (не хардкод в Python)
+- `registry.py` удалён — больше нет жёсткой привязки моделей в коде
+- Для добавления модели достаточно:
+  1. Pull в Ollama
+  2. Добавить в `ai.providers` в `generate_config.pl`
+  3. Перегенерить config.yaml и передеплоить
+
+### YAML::XS everywhere
+- `generate_config.pl` и `setup.pl` переписаны на `YAML::XS` вместо самописного `yaml()` sub и regex-парсинга
+- Установлен пакет `perl-YAML-LibYAML` на сервере и локально
+- Потребовалось при добавлении `ai.providers` — regex в `setup.pl` начал совпадать с `name: Ollama` из providers, заменив `database.name`
+- `setup.pl:read_deploy_yaml()` читает config.yaml через `YAML::XS::LoadFile`, без regex
+
+### Timeout & Error Logging
+- Ollama timeout увеличен до 600s (дефолт в `generate_config.pl`, читается из config.yaml)
+- Все провайдеры ловят `httpx.ReadTimeout` в `chat()` и поднимают `TimeoutError` с указанием таймаута
+- `device_name` добавлен во все логи `summary_failed`, `daily_summary_failed`, `ai_anomaly_detection_failed`
+- Scheduler передаёт `hostname` из списка устройств
+
+### AI Language Support
+- `app_settings(ai_language)` — `ru` или `en`, меняется в UI (settings.html)
+- AI worker раз в 5 мин проверяет `ai_language`, пересоздаёт сервисы
+- Все промпты в `app/ai/prompts.py`: `ANOMALY_LANG_PROMPTS`, `SUMMARIZE_LANG_PROMPTS`, `RECOMMEND_PROMPT`
+- Провайдеры импортируют промпты из `prompts.py`, не содержат inline-текстов
+
+### Dashboard Performance
+- 10 SQL запросов `/api/dashboard/history` выполняются параллельно через `asyncio.gather`
+- `/api/dashboard/storage` и `top_apps` кешируются в памяти на 5 минут (in-memory cache, module-level переменные)
+- Добавлены индексы: `idx_stats_hour` ON `log_stats_hourly(hour)`, `idx_stats_hour_severity` ON `log_stats_hourly(hour, severity)`
+- `ANALYZE log_stats_hourly` запускается после создания индексов в `_ensure_indexes()`
+
+### Anomaly Display
+- Статистические детекторы включают `MAX(id) AS sample_id` в SQL — #ID ссылается на конкретный лог
+- #ID кликабельны в заголовке и описании аномалии (`convertLogIds(text, deviceId)` в `app.js`)
+- Модальное окно лога поддерживает `?device_id=N` — жёлтый баннер при несовпадении device
+- `d.name` возвращается в `list_anomalies` наряду с `d.hostname`
+- Окно мержа аномалий: 48ч (было 24ч), `resolved_at` сбрасывается при мерже
+- Промпт аномалий: "НЕ используй #ID как заголовок", "Цитаты из логов оставляй в оригинале"
+
+### DNS / Container Networking
+- DB host: `host.containers.internal` (не `ptlog-infra`) — обход aardvark-dns
+- `hostPort: 5432` добавлен в `infra.kube`
+
+### Setup.pl
+- `$FORCE` flag: `--update=all` без интерактивных промптов
+- `--update` (bare) — интерактивный: выбирает компоненты из `%comp`
+- `read_deploy_yaml()` через `YAML::XS::LoadFile`
+
+### Charts (web/js/charts.js)
+- W2W/M2M: `type: 'area'` (было `bar`), градиентная заливка, smooth stroke
+- Аномалии: линия тренда (линейная регрессия) поверх столбцов + прогноз на следующий час

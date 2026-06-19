@@ -9,12 +9,15 @@ router = APIRouter(tags=["logs"])
 
 
 @router.get("/logs/{log_id}")
-async def get_log(log_id: int):
+async def get_log(log_id: int, device_id: int | None = None):
     row = await db.get_log_by_id(log_id)
     if not row:
         from fastapi.responses import JSONResponse
         return JSONResponse({"error": "not found"}, status_code=404)
-    return row
+    result = dict(row)
+    if device_id is not None and result.get("device_id") != device_id:
+        result["_device_mismatch"] = True
+    return result
 
 
 @router.get("/logs/similar")

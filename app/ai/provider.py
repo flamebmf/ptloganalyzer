@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: LicenseRef-Personal-Use-Only
 from abc import ABC, abstractmethod
 
+from app.ai.prompts import ANOMALY_LANG_PROMPTS
+
 
 class AIProvider(ABC):
     @abstractmethod

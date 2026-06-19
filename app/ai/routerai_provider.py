@@ -5,6 +5,7 @@ import json
 import httpx
 
 from app.ai.provider import AIProvider
+from app.ai.prompts import ANOMALY_LANG_PROMPTS
 
 
 class RouterAIProvider(AIProvider):
@@ -17,22 +18,27 @@ class RouterAIProvider(AIProvider):
             em = "openai/" + em
         self.embed_model = em
         self._dims = config.routerai_embedding_dims
-        self._client = httpx.AsyncClient(timeout=config.routerai_timeout)
+        self._timeout = config.routerai_timeout
+        self._client = httpx.AsyncClient(timeout=self._timeout)
+        self.language = getattr(config, "ai_language", "ru")
 
     @property
     def embedding_dims(self) -> int:
         return self._dims
 
     async def chat(self, messages: list[dict], **kwargs) -> str:
-        resp = await self._client.post(
-            f"{self.base_url}/chat/completions",
-            headers={"Authorization": f"Bearer {self.api_key}"},
-            json={
-                "model": kwargs.get("model", self.chat_model),
-                "messages": messages,
-                **kwargs,
-            },
-        )
+        try:
+            resp = await self._client.post(
+                f"{self.base_url}/chat/completions",
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                json={
+                    "model": kwargs.get("model", self.chat_model),
+                    "messages": messages,
+                    **kwargs,
+                },
+            )
+        except httpx.ReadTimeout:
+            raise TimeoutError(f"ReadTimeout after {self._timeout}s")
         resp.raise_for_status()
         return resp.json()["choices"][0]["message"]["content"]
 
@@ -80,7 +86,7 @@ class RouterAIProvider(AIProvider):
             "Проведи глубокий анализ syslog-сообщений. "
             "Ответь на русском языке, используй чёткую структуру:\n\n"
             "=== ОБЩАЯ ИНФОРМАЦИЯ ===\n"
-            "• Диапазон времени, общее кол-во сообщений, распределение по severity\n\n"
+            "• Общее кол-во сообщений, распределение по severity\n\n"
             "=== КЛЮЧЕВЫЕ СОБЫТИЯ ===\n"
             "• 3-5 самых важных событий с номерами логов (#NNN) и временем\n"
             "• Для каждого: что произошло, почему важно\n\n"
@@ -129,7 +135,9 @@ class RouterAIProvider(AIProvider):
             {"role": "system", "content": (
                 "Ты — система обнаружения аномалий в логах. "
                 "Отвечай ТОЛЬКО валидным JSON-массивом, без пояснений. "
-                "Пиши на русском языке. "
+                "Пиши ТОЛЬКО на русском языке. "
+                "Категорически запрещено использовать английские, вьетнамские или другие языки. "
+                "Все символы — только кириллица и стандартная пунктуация. "
                 "Указывай номера логов и время в описании. "
                 "Не выдумывай аномалии — только реальные."
             )},

@@ -75,18 +75,24 @@ function showToast(msg, type) {
   setTimeout(() => { t.remove(); }, 4000);
 }
 
-function openLogModal(logId) {
+function openLogModal(logId, deviceId) {
   var overlay = document.getElementById('logModal');
   var body = document.getElementById('modalBody');
   document.getElementById('modalLogId').textContent = logId;
   body.innerHTML = '<span style="color:var(--pt-muted)">Загрузка...</span>';
   overlay.style.display = 'flex';
 
-  apiGet('/api/logs/' + logId)
+  var url = '/api/logs/' + logId;
+  if (deviceId) url += '?device_id=' + deviceId;
+  apiGet(url)
     .then(function(data) {
       if (!data || data.error) {
         body.innerHTML = '<span style="color:#ff5252">Запись не найдена</span>';
         return;
+      }
+      if (data._device_mismatch) {
+        body.innerHTML = '<div style="color:#ffa726;padding:8px;margin-bottom:8px;background:rgba(255,167,38,.1);border-radius:6px;font-size:.8rem"><i class="bi bi-exclamation-triangle"></i> Этот #ID относится к устройству <strong>' + escHtml(data.hostname||'другому') + '</strong></div>'
+          + body.innerHTML;
       }
       var sevNames = {0:'EMERG',1:'ALERT',2:'CRIT',3:'ERR',4:'WARNING',5:'NOTICE',6:'INFO',7:'DEBUG'};
       var facNames = {0:'kern',1:'user',2:'mail',3:'daemon',4:'auth',5:'syslog',6:'lpr',7:'news',8:'uucp',9:'cron',10:'authpriv',11:'ftp',16:'local0',17:'local1',18:'local2',19:'local3',20:'local4',21:'local5',22:'local6',23:'local7'};
@@ -122,9 +128,10 @@ function escHtml(str) {
   return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-function convertLogIds(text) {
+function convertLogIds(text, deviceId) {
   if (!text) return '';
-  return text.replace(/#(\d+)\b/g, '<a href="#" onclick="event.preventDefault();openLogModal($1);return false" class="log-ref">#$1</a>');
+  var idAttr = deviceId ? ',' + deviceId : '';
+  return text.replace(/#(\d+)\b/g, '<a href="#" onclick="event.preventDefault();openLogModal($1' + idAttr + ');return false" class="log-ref">#$1</a>');
 }
 
 function mdToHtml(text) {

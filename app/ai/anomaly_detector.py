@@ -14,7 +14,7 @@ class AnomalyDetector:
         self.db = db
         self.provider = create_provider(config, task="anomaly_detection")
 
-    async def run_for_device(self, device_id: int, ai_enabled: bool = True):
+    async def run_for_device(self, device_id: int, ai_enabled: bool = True, device_name: str = ""):
         # Always run statistical detectors (no AI needed)
         await self._check_volume(device_id)
         await self._check_error_flood(device_id)
@@ -23,7 +23,7 @@ class AnomalyDetector:
 
         # AI-based content analysis (only if provider configured + ai_enabled per device)
         if self.provider and ai_enabled:
-            await self._check_ai_content(device_id)
+            await self._check_ai_content(device_id, device_name=device_name)
 
     async def _insert_anomaly(self, device_id: int, severity: str, title: str, description: str | None = None):
         sev_order = {"info": 0, "warning": 1, "critical": 2}
@@ -44,18 +44,20 @@ class AnomalyDetector:
             device_id,
         )
         recent = await self.db.fetchrow(
-            "SELECT COUNT(*) AS cnt FROM syslog_messages "
+            "SELECT COUNT(*) AS cnt, MAX(id) AS sample_id FROM syslog_messages "
             "WHERE device_id = $1 AND ts > NOW() - INTERVAL '1 hour'",
             device_id,
         )
         if baseline and baseline["std_per_hour"] and baseline["std_per_hour"] > 0:
             z_score = (recent["cnt"] - baseline["avg_per_hour"]) / baseline["std_per_hour"]
             if abs(z_score) > 3:
+                sid = recent["sample_id"]
+                sid_str = f"#{sid} " if sid else ""
                 await self._insert_anomaly(
                     device_id,
                     "critical" if abs(z_score) > 5 else "warning",
                     "Anomalous log volume detected",
-                    f"Device {device_id}: {recent['cnt']} logs in last hour "
+                    f"{sid_str}{recent['cnt']} logs in last hour "
                     f"(avg={baseline['avg_per_hour']:.0f}, z-score={z_score:.2f})",
                 )
                 log.warning("volume_anomaly", device_id=device_id,
@@ -63,7 +65,7 @@ class AnomalyDetector:
 
     async def _check_error_flood(self, device_id: int):
         recent = await self.db.fetch(
-            "SELECT COUNT(*) AS cnt, MAX(ts) AS last_ts "
+            "SELECT COUNT(*) AS cnt, MAX(ts) AS last_ts, MAX(id) AS sample_id "
             "FROM syslog_messages "
             "WHERE device_id = $1 AND ts > NOW() - INTERVAL '15 minutes' "
             "AND severity <= 3",
@@ -86,17 +88,19 @@ class AnomalyDetector:
 
         flood_ratio = row["cnt"] / max(total_errors, 1) * 100
         if flood_ratio > 30 and row["cnt"] >= 10:
+            sid = row["sample_id"]
+            sid_str = f"#{sid} " if sid else ""
             await self.db.insert_anomaly(
                 device_id, "warning",
                 "Error rate spike",
-                f"{row['cnt']} errors in 15 min ({flood_ratio:.0f}% of 24h total)",
+                f"{sid_str}{row['cnt']} errors in 15 min ({flood_ratio:.0f}% of 24h total)",
             )
             log.warning("error_flood", device_id=device_id,
                          count=row["cnt"], pct=flood_ratio)
 
     async def _check_duplicate_burst(self, device_id: int):
         rows = await self.db.fetch(
-            "SELECT message, COUNT(*) AS cnt "
+            "SELECT message, COUNT(*) AS cnt, MAX(id) AS sample_id "
             "FROM syslog_messages "
             "WHERE device_id = $1 AND ts > NOW() - INTERVAL '5 minutes' "
             "GROUP BY message HAVING COUNT(*) >= 10 "
@@ -110,14 +114,14 @@ class AnomalyDetector:
             await self.db.insert_anomaly(
                 device_id, "warning" if r["cnt"] < 50 else "critical",
                 "Message flood detected",
-                f"{flood_msg} · повтор {r['cnt']}x за 5 мин",
+                f"#{r['sample_id']} {flood_msg} · повтор {r['cnt']}x за 5 мин",
             )
             log.warning("message_flood", device_id=device_id,
                          count=r["cnt"], message=short)
 
     async def _check_app_spike(self, device_id: int):
         recent_apps = await self.db.fetch(
-            "SELECT app_name, COUNT(*) AS cnt "
+            "SELECT app_name, COUNT(*) AS cnt, MAX(id) AS sample_id "
             "FROM syslog_messages "
             "WHERE device_id = $1 AND ts > NOW() - INTERVAL '15 minutes' "
             "AND app_name IS NOT NULL AND app_name != '-' "
@@ -145,15 +149,17 @@ class AnomalyDetector:
             recent_cnt = r["cnt"]
             avg_cnt = avg_map.get(aname, 0)
             if avg_cnt > 0 and recent_cnt > avg_cnt * 5 and recent_cnt >= 20:
+                sid = r["sample_id"]
+                sid_str = f"#{sid} " if sid else ""
                 await self._insert_anomaly(
                     device_id, "warning",
                     f"Application spike: {aname}",
-                    f"{recent_cnt} logs in 15 min (avg={avg_cnt:.0f}/h, {recent_cnt/avg_cnt:.0f}x)",
+                    f"{sid_str}{recent_cnt} logs in 15 min (avg={avg_cnt:.0f}/h, {recent_cnt/avg_cnt:.0f}x)",
                 )
                 log.warning("app_spike", device_id=device_id,
                              app=aname, count=recent_cnt, avg=avg_cnt)
 
-    async def _check_ai_content(self, device_id: int):
+    async def _check_ai_content(self, device_id: int, device_name: str = ""):
         recent = await self.db.fetch(
             "SELECT id, ts, facility, severity, app_name, message "
             "FROM syslog_messages WHERE device_id = $1 "
@@ -178,7 +184,7 @@ class AnomalyDetector:
                         a.get("description"),
                     )
                     log.info("ai_anomaly_detected", device_id=device_id,
-                              title=a["title"])
+                              device_name=device_name, title=a["title"])
         except Exception as e:
             log.error("ai_anomaly_detection_failed",
-                       device_id=device_id, error=repr(e), type=type(e).__name__)
+                       device_id=device_id, device_name=device_name, error=repr(e), type=type(e).__name__)

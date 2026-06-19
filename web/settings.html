@@ -159,13 +159,12 @@ async function loadDevices() {
     }
     var html = '';
     for (var d of devices) {
-      var stats = await apiGet('/api/devices/' + d.id + '/stats');
       var safeName = (d.name || d.hostname).replace(/'/g,"\\'");
       var cardTitle = d.name || d.hostname;
       html += '<div class="card-dash">'
         + '<div class="card-header">'
         + '<div class="card-title">' + cardTitle + (d.ip ? ' <span style="color:var(--pt-muted);font-weight:400;font-size:.8rem">(' + d.ip + ')</span>' : '') + '</div>'
-        + '<span class="' + (stats.online ? 'online' : 'offline') + '"><i class="bi bi-circle-fill" style="font-size:.6rem"></i> ' + (stats.online ? 'online' : 'offline') + '</span>'
+        + '<span class="' + (d.online ? 'online' : 'offline') + '"><i class="bi bi-circle-fill" style="font-size:.6rem"></i> ' + (d.online ? 'online' : 'offline') + '</span>'
         + '</div><div class="card-body">'
         + '<div style="display:flex;gap:4px;align-items:center;margin-bottom:4px">'
         + '<input id="devName_' + d.id + '" value="' + (d.name || '') + '" placeholder="' + (d.name && d.hostname ? d.hostname : cardTitle) + (d.ip && !d.name ? ' (' + d.ip + ')' : '') + '" style="flex:1;font-weight:700;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:6px;padding:4px 8px;color:var(--pt-text);font-size:.8rem;outline:none">'
@@ -175,7 +174,7 @@ async function loadDevices() {
         + '<select id="devTpl_' + d.id + '" style="flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:6px;padding:4px 8px;color:var(--pt-text);font-size:.75rem;outline:none">' + tplOpts + '</select>'
         + '<button class="btn btn-sm btn-primary" onclick="saveDeviceTemplate(' + d.id + ')" title="Сохранить шаблон" style="padding:2px 6px;font-size:.75rem"><i class="bi bi-check-lg"></i></button>'
         + '</div>'
-        + '<div class="card-stat"><span>Logs / 24h</span> <span class="stat-val">' + (stats.total || 0) + '</span></div>'
+        + '<div class="card-stat"><span>Logs / 24h</span> <span class="stat-val">' + (d.total || 0) + '</span></div>'
         + '<div class="card-stat"><span>' + (d.ip || '') + ' &middot; ' + (d.device_type || 'other') + '</span></div>'
         + '</div>'
         + '<div style="display:flex;gap:4px;padding:4px 8px 6px;flex-wrap:wrap">'
@@ -278,8 +277,8 @@ async function loadAiTaskConfig() {
     for (var t of tasks) {
       var cur = resp.current[t.id] || {};
       html += '<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">'
-        + '<span style="font-size:.72rem;font-weight:600;width:68px;flex-shrink:0;color:var(--pt-muted);text-transform:uppercase;letter-spacing:.5px">' + t.label + '</span>'
-        + '<select id="task-prov-' + t.id + '" onchange="onTaskProviderChange(\'' + t.id + '\')" style="width:105px;flex-shrink:0;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:6px;padding:3px 6px;color:var(--pt-text);font-size:.72rem;outline:none">'
+        + '<span style="font-size:.72rem;font-weight:600;width:120px;flex-shrink:0;color:var(--pt-muted);text-transform:uppercase;letter-spacing:.5px;display:flex;align-items:center;height:28px">' + t.label + '</span>'
+        + '<select id="task-prov-' + t.id + '" onchange="onTaskProviderChange(\'' + t.id + '\')" style="width:90px;flex-shrink:0;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:6px;padding:3px 6px;color:var(--pt-text);font-size:.72rem;outline:none">'
         + '<option value="">——</option>'
         + Object.keys(resp.providers).map(function(p) {
             return '<option value="' + p + '"' + (p === cur.provider ? ' selected' : '') + '>' + resp.providers[p].name + '</option>';

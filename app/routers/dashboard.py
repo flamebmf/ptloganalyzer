@@ -1,6 +1,8 @@
 # Copyright (c) 2026 PlurumTech.com
 # SPDX-License-Identifier: LicenseRef-Personal-Use-Only
-from datetime import datetime, timezone
+import asyncio
+from datetime import datetime, timedelta, timezone
+from time import time
 
 from fastapi import APIRouter, Query
 
@@ -8,79 +10,121 @@ from app.main import db
 
 router = APIRouter(tags=["dashboard"])
 
+_storage_cache = None
+_storage_cache_ts = 0
+_top_apps_cache = None
+_top_apps_cache_ts = 0
+
 
 @router.get("/dashboard/history")
 async def dashboard_history():
-    volume = await db.fetch(
+    now = datetime.now(timezone.utc)
+    rounded_now = now.replace(minute=0, second=0, microsecond=0)
+    cutoff_day = rounded_now - timedelta(hours=24)
+    cutoff_48h = rounded_now - timedelta(hours=48)
+    cutoff_week = rounded_now - timedelta(days=7)
+    cutoff_14d = rounded_now - timedelta(days=14)
+    cutoff_month = rounded_now - timedelta(days=30)
+    cutoff_60d = rounded_now - timedelta(days=60)
+
+    async def q(sql, *args):
+        return await db.fetch(sql, *args)
+
+    volume_sql = (
         "SELECT hour, SUM(count)::int AS count "
-        "FROM log_stats_hourly "
-        "WHERE hour > date_trunc('hour', NOW() - INTERVAL '24 hours') "
-        "GROUP BY hour ORDER BY hour"
+        "FROM log_stats_hourly WHERE hour > $1 GROUP BY hour ORDER BY hour"
     )
-    volume_yesterday = await db.fetch(
+    vol_today = q(volume_sql, cutoff_day)
+    vol_yesterday = q(
         "SELECT hour + INTERVAL '24 hours' AS hour, SUM(count)::int AS count "
-        "FROM log_stats_hourly "
-        "WHERE hour BETWEEN date_trunc('hour', NOW() - INTERVAL '48 hours') "
-        "AND date_trunc('hour', NOW() - INTERVAL '24 hours') "
-        "GROUP BY hour ORDER BY hour"
+        "FROM log_stats_hourly WHERE hour BETWEEN $1 AND $2 GROUP BY hour ORDER BY hour",
+        cutoff_48h, cutoff_day,
     )
-    severity = await db.fetch(
+    severity_q = q(
         "SELECT severity, SUM(count)::int AS count "
-        "FROM log_stats_hourly "
-        "WHERE hour > date_trunc('hour', NOW() - INTERVAL '24 hours') "
-        "GROUP BY severity ORDER BY severity"
+        "FROM log_stats_hourly WHERE hour > $1 GROUP BY severity ORDER BY severity",
+        cutoff_day,
     )
-    total = sum(r["count"] for r in volume) if volume else 0
-    top_errors = await db.fetch(
+    top_errors_q = q(
         "SELECT COALESCE(d.name, d.hostname, host(d.ip)) AS hostname, SUM(s.count)::int AS errors "
-        "FROM log_stats_hourly s "
-        "JOIN devices d ON d.id = s.device_id "
-        "WHERE s.hour > date_trunc('hour', NOW() - INTERVAL '24 hours') "
-        "AND s.severity <= 3 "
-        "GROUP BY d.id, d.hostname, d.name, d.ip ORDER BY errors DESC LIMIT 5"
+        "FROM log_stats_hourly s JOIN devices d ON d.id = s.device_id "
+        "WHERE s.hour > $1 AND s.severity <= 3 "
+        "GROUP BY d.id, d.hostname, d.name, d.ip ORDER BY errors DESC LIMIT 5",
+        cutoff_day,
     )
-    per_device = await db.fetch(
+    per_device_q = q(
         "SELECT COALESCE(d.name, d.hostname, host(d.ip)) AS hostname, SUM(s.count)::int AS count "
-        "FROM log_stats_hourly s "
-        "JOIN devices d ON d.id = s.device_id "
-        "WHERE s.hour > date_trunc('hour', NOW() - INTERVAL '24 hours') "
-        "GROUP BY d.id, d.hostname, d.name, d.ip ORDER BY count DESC"
+        "FROM log_stats_hourly s JOIN devices d ON d.id = s.device_id "
+        "WHERE s.hour > $1 GROUP BY d.id, d.hostname, d.name, d.ip ORDER BY count DESC",
+        cutoff_day,
     )
-    top_apps = await db.fetch(
-        "SELECT app_name, COUNT(*)::int AS count "
-        "FROM syslog_messages "
-        "WHERE ts > NOW() - INTERVAL '24 hours' AND app_name IS NOT NULL AND app_name != '-' "
-        "GROUP BY app_name ORDER BY count DESC LIMIT 10"
-    )
-    volume_week = await db.fetch(
+    week_q = q(
         "SELECT date_trunc('day', hour) AS day, SUM(count)::int AS count "
-        "FROM log_stats_hourly "
-        "WHERE hour > NOW() - INTERVAL '7 days' "
-        "GROUP BY day ORDER BY day"
+        "FROM log_stats_hourly WHERE hour > $1 GROUP BY day ORDER BY day",
+        cutoff_week,
     )
-    volume_week_prev = await db.fetch(
+    week_prev_q = q(
         "SELECT date_trunc('day', hour + INTERVAL '7 days') AS day, SUM(count)::int AS count "
-        "FROM log_stats_hourly "
-        "WHERE hour BETWEEN NOW() - INTERVAL '14 days' AND NOW() - INTERVAL '7 days' "
-        "GROUP BY day ORDER BY day"
+        "FROM log_stats_hourly WHERE hour BETWEEN $1 AND $2 GROUP BY day ORDER BY day",
+        cutoff_14d, cutoff_week,
     )
-    volume_month = await db.fetch(
+    month_q = q(
         "SELECT date_trunc('day', hour) AS day, SUM(count)::int AS count "
-        "FROM log_stats_hourly "
-        "WHERE hour > NOW() - INTERVAL '30 days' "
-        "GROUP BY day ORDER BY day"
+        "FROM log_stats_hourly WHERE hour > $1 GROUP BY day ORDER BY day",
+        cutoff_month,
     )
-    volume_month_prev = await db.fetch(
+    month_prev_q = q(
         "SELECT date_trunc('day', hour + INTERVAL '30 days') AS day, SUM(count)::int AS count "
-        "FROM log_stats_hourly "
-        "WHERE hour BETWEEN NOW() - INTERVAL '60 days' AND NOW() - INTERVAL '30 days' "
-        "GROUP BY day ORDER BY day"
+        "FROM log_stats_hourly WHERE hour BETWEEN $1 AND $2 GROUP BY day ORDER BY day",
+        cutoff_60d, cutoff_month,
     )
-    anomaly_trend = await db.fetch(
+    anomaly_q = q(
         "SELECT date_trunc('hour', detected_at) AS hour, COUNT(*) AS count "
-        "FROM anomalies WHERE detected_at > NOW() - INTERVAL '24 hours' "
-        "GROUP BY hour ORDER BY hour"
+        "FROM anomalies WHERE detected_at > $1 GROUP BY hour ORDER BY hour",
+        cutoff_day,
     )
+
+    all_results = await asyncio.gather(
+        vol_today, vol_yesterday, severity_q, top_errors_q, per_device_q,
+        week_q, week_prev_q, month_q, month_prev_q, anomaly_q,
+    )
+
+    (volume, volume_yesterday, severity, top_errors, per_device,
+     volume_week, volume_week_prev, volume_month, volume_month_prev,
+     anomaly_trend) = all_results
+
+    total = sum(r["count"] for r in volume) if volume else 0
+
+    # Top apps (cached)
+    global _top_apps_cache, _top_apps_cache_ts
+    if time() - _top_apps_cache_ts > 300:
+        _top_apps_cache = await db.fetch(
+            "SELECT app_name, COUNT(*)::int AS count "
+            "FROM syslog_messages "
+            "WHERE ts > NOW() - INTERVAL '24 hours' AND app_name IS NOT NULL AND app_name != '-' "
+            "GROUP BY app_name ORDER BY count DESC LIMIT 10"
+        )
+        _top_apps_cache_ts = time()
+
+    # Compute trend forecast (linear regression)
+    anomaly_forecast = []
+    if len(anomaly_trend) >= 3:
+        pts = [dict(r) for r in anomaly_trend]
+        n = len(pts)
+        sum_x = sum(i for i in range(n))
+        sum_y = sum(p["count"] for p in pts)
+        sum_xy = sum(i * p["count"] for i, p in enumerate(pts))
+        sum_xx = sum(i * i for i in range(n))
+        slope = (n * sum_xy - sum_x * sum_y) / (n * sum_xx - sum_x * sum_x) if (n * sum_xx - sum_x * sum_x) else 0
+        intercept = (sum_y - slope * sum_x) / n
+        for i, p in enumerate(pts):
+            y = max(0, round(intercept + slope * i, 1))
+            if y > 0:
+                anomaly_forecast.append({"hour": p["hour"], "count": y})
+        next_hour = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+        y_next = max(0, round(intercept + slope * n, 1))
+        if y_next > 0:
+            anomaly_forecast.append({"hour": next_hour, "count": y_next})
     return {
         "volume": [dict(r) for r in volume],
         "volume_yesterday": [dict(r) for r in volume_yesterday],
@@ -92,32 +136,35 @@ async def dashboard_history():
         "total": total or 0,
         "top_errors": [dict(r) for r in top_errors],
         "per_device": [dict(r) for r in per_device],
-        "top_apps": [dict(r) for r in top_apps],
+        "top_apps": [dict(r) for r in _top_apps_cache] if _top_apps_cache else [],
         "anomaly_trend": [dict(r) for r in anomaly_trend],
+        "anomaly_forecast": anomaly_forecast,
     }
 
 
 @router.get("/dashboard/storage")
 async def dashboard_storage():
-    db_size = await db.fetchval(
-        "SELECT pg_database_size(current_database())"
+    global _storage_cache, _storage_cache_ts
+    if time() - _storage_cache_ts <= 300 and _storage_cache:
+        return _storage_cache
+    results = await asyncio.gather(
+        db.fetchval("SELECT pg_database_size(current_database())"),
+        db.fetchval("SELECT COUNT(*) FROM syslog_messages"),
+        db.fetchval("SELECT MIN(ts) FROM syslog_messages"),
     )
-    total_logs = await db.fetchval(
-        "SELECT COUNT(*) FROM syslog_messages"
-    )
-    oldest = await db.fetchval(
-        "SELECT MIN(ts) FROM syslog_messages"
-    )
-    avg_per_day = await db.fetchval(
-        "SELECT COUNT(*) / NULLIF(EXTRACT(DAY FROM NOW() - MIN(ts)), 0) "
-        "FROM syslog_messages"
-    )
-    return {
+    db_size, total_logs, oldest = results
+    avg_per_day = 0
+    if oldest and total_logs:
+        days = max((datetime.now(timezone.utc) - oldest).days, 1)
+        avg_per_day = total_logs / days
+    _storage_cache = {
         "db_size": db_size or 0,
         "total_logs": total_logs or 0,
         "oldest_log": oldest.isoformat() if oldest else None,
         "avg_per_day": round(avg_per_day or 0),
     }
+    _storage_cache_ts = time()
+    return _storage_cache
 
 
 @router.get("/dashboard/logtail")

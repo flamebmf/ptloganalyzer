@@ -215,6 +215,25 @@ class Database:
             await conn.execute(
                 "ALTER TABLE syslog_messages ADD COLUMN IF NOT EXISTS source_ip INET"
             )
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS device_last_seen (
+                    device_id INT NOT NULL PRIMARY KEY REFERENCES devices(id),
+                    ts TIMESTAMPTZ NOT NULL
+                )
+            """)
+            await conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_device_last_seen_ts "
+                "ON device_last_seen(ts)"
+            )
+            # Backfill if empty
+            has_rows = await conn.fetchval("SELECT EXISTS (SELECT 1 FROM device_last_seen LIMIT 1)")
+            if not has_rows:
+                await conn.execute("""
+                    INSERT INTO device_last_seen (device_id, ts)
+                    SELECT device_id, MAX(ts) FROM syslog_messages GROUP BY device_id
+                    ON CONFLICT (device_id) DO NOTHING
+                """)
+                log.info("device_last_seen_backfilled")
             try:
                 await conn.execute(
                     "CREATE INDEX IF NOT EXISTS idx_syslog_linked_ips "
@@ -226,6 +245,15 @@ class Database:
                 )
             except Exception:
                 pass  # GIN on partitioned table needs PG14+
+            await conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_stats_hour "
+                "ON log_stats_hourly(hour)"
+            )
+            await conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_stats_hour_severity "
+                "ON log_stats_hourly(hour, severity)"
+            )
+            await conn.execute("ANALYZE log_stats_hourly")
 
             # ── Parse templates ──
             await conn.execute("""
@@ -543,7 +571,7 @@ class Database:
         new_fp = self._anomaly_msg_fingerprint(description)
         recent = await self.fetch(
             "SELECT id, title, description, count FROM anomalies "
-            "WHERE device_id = $1 AND last_seen > NOW() - INTERVAL '24 hours'",
+            "WHERE device_id = $1 AND last_seen > NOW() - INTERVAL '48 hours'",
             device_id,
         )
         best_match = None
@@ -573,7 +601,7 @@ class Database:
             if description and description not in old_desc and old_desc.count("\n——") < 3:
                 merged_desc = old_desc + "\n——\n" + title + "\n" + description
             await self.execute(
-                "UPDATE anomalies SET count = $1, last_seen = NOW(), title = $2, description = $3 WHERE id = $4",
+                "UPDATE anomalies SET count = $1, last_seen = NOW(), title = $2, description = $3, resolved_at = NULL WHERE id = $4",
                 new_count, title, merged_desc, mid,
             )
             return mid
@@ -612,7 +640,7 @@ class Database:
             f"SELECT COUNT(*) FROM anomalies a WHERE {where}", *args
         )
         rows = await self.fetch(
-            f"SELECT a.id, a.device_id, d.hostname, a.severity, a.title, "
+            f"SELECT a.id, a.device_id, d.name, d.hostname, a.severity, a.title, "
             f"a.description, a.detected_at, a.resolved_at, a.count, a.last_seen "
             f"FROM anomalies a JOIN devices d ON d.id = a.device_id "
             f"WHERE {where} ORDER BY a.last_seen DESC "

@@ -1,8 +1,5 @@
 # Copyright (c) 2026 PlurumTech.com
 # SPDX-License-Identifier: LicenseRef-Personal-Use-Only
-import json
-import os
-from pathlib import Path
 
 from fastapi import APIRouter
 from pydantic import BaseModel
@@ -11,31 +8,26 @@ from app.main import config, db
 
 router = APIRouter(tags=["settings"])
 
-RUNTIME_OVERRIDES = Path(config.data_dir) / "config" / "runtime.json"
 
-
-def load_overrides():
-    try:
-        return json.loads(RUNTIME_OVERRIDES.read_text())
-    except Exception:
-        return {}
-
-
-def save_overrides(data: dict):
-    RUNTIME_OVERRIDES.parent.mkdir(parents=True, exist_ok=True)
-    RUNTIME_OVERRIDES.write_text(json.dumps(data))
-
-
-def apply_overrides():
-    ov = load_overrides()
-    if ov.get("ai_provider"):
-        config.ai_provider = ov["ai_provider"]
-    if ov.get("language"):
-        config.language = ov["language"]
-    if ov.get("ai_language"):
-        config.ai_language = ov["ai_language"]
-    if ov.get("anomaly_min_severity"):
-        config.anomaly_min_severity = ov["anomaly_min_severity"]
+async def apply_overrides():
+    """Load all settings from DB into in-memory config at startup."""
+    SETTING_MAP = {
+        "ai_provider": ("ai_provider", str),
+        "language": ("language", str),
+        "ai_language": ("ai_language", str),
+        "anomaly_min_severity": ("anomaly_min_severity", str),
+        "ollama_url": ("ollama_base_url", str),
+        "openai_url": ("openai_base_url", str),
+        "routerai_url": ("routerai_base_url", str),
+        "summary_enabled": ("summary_enabled", bool),
+        "daily_summary_enabled": ("daily_summary_enabled", bool),
+    }
+    for db_key, (cfg_attr, val_type) in SETTING_MAP.items():
+        val = await db.get_setting(db_key)
+        if val is not None:
+            if val_type is bool:
+                val = str(val).lower() == "true"
+            setattr(config, cfg_attr, val)
 
 
 class SettingsUpdate(BaseModel):
@@ -62,8 +54,8 @@ async def get_settings():
             "summarization_interval": config.summary_interval,
             "anomaly_interval": config.anomaly_interval,
             "anomaly_min_severity": config.anomaly_min_severity,
-            "summary_enabled": True,
-            "daily_summary_enabled": True,
+            "summary_enabled": config.summary_enabled,
+            "daily_summary_enabled": config.daily_summary_enabled,
             "openai": {"url": config.openai_base_url, "model": config.openai_chat_model, "has_key": bool(config.openai_api_key)},
             "ollama": {"url": config.ollama_base_url, "model": config.ollama_chat_model},
             "routerai": {"url": config.routerai_base_url, "model": config.routerai_chat_model, "has_key": bool(config.routerai_api_key)},
@@ -98,23 +90,16 @@ async def update_settings(data: SettingsUpdate):
         config.routerai_base_url = data.routerai_url
         changed["routerai_url"] = data.routerai_url
     if data.summary_enabled is not None:
+        config.summary_enabled = data.summary_enabled
         changed["summary_enabled"] = str(data.summary_enabled).lower()
     if data.daily_summary_enabled is not None:
+        config.daily_summary_enabled = data.daily_summary_enabled
         changed["daily_summary_enabled"] = str(data.daily_summary_enabled).lower()
     if changed:
-        ov = load_overrides()
-        ov.update(changed)
-        save_overrides(ov)
-        for k in ("ai_provider", "language", "ai_language", "anomaly_min_severity",
-                   "summary_enabled", "daily_summary_enabled",
-                   "ollama_url", "openai_url", "routerai_url"):
-            if k in changed:
-                await db.set_setting(k, changed[k])
+        for k, v in changed.items():
+            await db.set_setting(k, v)
     if data.chat_model:
         provider = config.ai_provider
         key = f"{provider}_chat_model"
         await db.set_setting(key, data.chat_model)
-        ov = load_overrides()
-        ov["chat_model"] = data.chat_model
-        save_overrides(ov)
     return {"ok": True, "changed": changed, "ai_restart_required": False}

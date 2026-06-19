@@ -7,6 +7,7 @@ use v5.16;
 use File::Basename;
 use File::Copy;
 use Cwd 'abs_path';
+use YAML::XS qw(LoadFile);
 
 # Suppress Perl locale warnings (rare on container hosts)
 $ENV{LC_ALL} = 'C';
@@ -28,6 +29,7 @@ my $INSTALL_DIR = $DATA_DIR;
 my $REBUILD     = 0;
 my $PUSH        = 0;
 my $PULL        = 0;
+my $FORCE       = 0;
 my $REGISTRY    = $ENV{DOCKER_REGISTRY} || 'docker.io/pltec/ptloganalyzer';
 
 my %comp = map { $_ => 0 } qw(infra collector app ai web ollama);
@@ -76,7 +78,7 @@ my %T = (
     db_title => "База данных",
     db_coll_only => "Режим collector — только внешняя БД",
     db_local_q => "PostgreSQL локально (в pod'e) или внешний? [local/external]",
-    db_local_ok => "PostgreSQL будет запущен в pod'е ptlog-infra (сеть ptlog)",
+    db_local_ok => "PostgreSQL будет запущен в pod'е ptlog-infra, подключение через host.containers.internal",
     db_data_dir => "Директория данных",
     db_host => "PostgreSQL host",
     db_port => "PostgreSQL port",
@@ -183,7 +185,7 @@ my %T = (
     db_title => "Database",
     db_coll_only => "Collector mode — external DB only",
     db_local_q => "PostgreSQL local (in pod) or external? [local/external]",
-    db_local_ok => "PostgreSQL will run in ptlog-infra pod (ptlog network)",
+    db_local_ok => "PostgreSQL will run in ptlog-infra pod, connect via host.containers.internal",
     db_data_dir => "Data directory",
     db_host => "PostgreSQL host",
     db_port => "PostgreSQL port",
@@ -412,32 +414,25 @@ sub read_deploy_yaml {
   # Read config.yaml values if valid
   my $old_cfg = "$INSTALL_DIR/config/config.yaml";
   if (-f $old_cfg) {
-    open my $fh2, '<', $old_cfg or return 1;
-    local $/ = undef;
-    my $content = <$fh2>;
-    close $fh2;
-    if ($content =~ /^app:/m) {
-      # Strip YAML quotes from captured values
-      my $uq = sub { my $v = shift; $v =~ s/^"//; $v =~ s/"$//; $v };
-      # First, extract database section port
-      if ($content =~ /^database:\s*\n(?:.*\n)*?\s+port:\s+(\S+)/m) { $db{port} = $uq->($1) }
-      if ($content =~ /^\s+host:\s+(\S+)/m)      { $db{host} = $uq->($1) }
-      if ($content =~ /^\s+user:\s+(\S+)/m)       { $db{user} = $uq->($1) }
-      if ($content =~ /^\s+name:\s+(\S+)/m)       { $db{name} = $uq->($1) }
-      if ($content =~ /^\s+provider:\s+(\S+)/m)   { $ai{provider} = $uq->($1) }
-      if ($content =~ /^collector:\s*\n(?:.*\n)*?\s+port:\s+(\S+)/m) { $coll{port} = $uq->($1) }
-      if ($content =~ /^ai:\s*\n(?:.*\n)*?ollama:\s*\n(?:.*\n)*?\s+base_url:\s+(\S+)/m) { $ai{ollama_url} = $uq->($1) }
-      if ($content =~ /^ai:\s*\n(?:.*\n)*?\s+enabled:\s+(\S+)/m) { $ai{enabled} = $1 eq 'true' ? 1 : 0 }
-      if ($content =~ /^ai:\s*\n(?:.*\n)*?openai:\s*\n(?:.*\n)*?\s+base_url:\s+(\S+)/m) { $ai{openai_url} = $uq->($1) }
-      if ($content =~ /^ai:\s*\n(?:.*\n)*?openai:\s*\n(?:.*\n)*?\s+api_key:\s+(\S+)/m) { $ai{openai_key} = $uq->($1) }
-      if ($content =~ /^ai:\s*\n(?:.*\n)*?routerai:\s*\n(?:.*\n)*?\s+base_url:\s+(\S+)/m) { $ai{routerai_url} = $uq->($1) }
-      if ($content =~ /^ai:\s*\n(?:.*\n)*?routerai:\s*\n(?:.*\n)*?\s+api_key:\s+(\S+)/m) { $ai{routerai_key} = $uq->($1) }
-    } else { warn_msg "config.yaml повреждён, используем значения по умолчанию" }
+    eval { my $yaml = LoadFile($old_cfg);
+      $db{port} = $yaml->{database}{port} if defined $yaml->{database}{port};
+      $db{host} = $yaml->{database}{host} if defined $yaml->{database}{host};
+      $db{user} = $yaml->{database}{user} if defined $yaml->{database}{user};
+      $db{name} = $yaml->{database}{name} if defined $yaml->{database}{name};
+      $ai{provider} = $yaml->{ai}{provider} if defined $yaml->{ai}{provider};
+      $coll{port} = $yaml->{collector}{port} if defined $yaml->{collector}{port};
+      $ai{ollama_url} = $yaml->{ai}{ollama}{base_url} if defined $yaml->{ai}{ollama}{base_url};
+      $ai{enabled} = $yaml->{ai}{enabled} ? 1 : 0 if defined $yaml->{ai}{enabled};
+      $ai{openai_url} = $yaml->{ai}{openai}{base_url} if defined $yaml->{ai}{openai}{base_url};
+      $ai{openai_key} = $yaml->{ai}{openai}{api_key} if defined $yaml->{ai}{openai}{api_key};
+      $ai{routerai_url} = $yaml->{ai}{routerai}{base_url} if defined $yaml->{ai}{routerai}{base_url};
+      $ai{routerai_key} = $yaml->{ai}{routerai}{api_key} if defined $yaml->{ai}{routerai}{api_key};
+    }; if ($@) { warn_msg "config.yaml повреждён: $@, используем значения по умолчанию" }
   }
 
   # DB_HOST default
   $db{host} ||= 'localhost';
-  if ($comp{infra} && $db{host} eq 'localhost') { $db{host} = 'ptlog-infra' }
+  if ($comp{infra} && $db{host} eq 'localhost') { $db{host} = 'host.containers.internal' }
   $db{port}  ||= 5432;
   $db{name}  ||= 'ptloganalyzer';
   $db{user}  ||= 'ptlog';
@@ -539,7 +534,7 @@ sub ask_database {
   }
 
   if ($db{local}) {
-    $db{host} = 'ptlog-infra';
+    $db{host} = 'host.containers.internal';
     info t('db_local_ok');
     my $ans = prompt(t('db_data_dir'), $INSTALL_DIR);
     $INSTALL_DIR = $ans if length $ans;
@@ -1076,8 +1071,8 @@ sub deploy {
 
     my $pod_name = "ptlog-$comp";
     if (capture("podman pod exists $pod_name 2>/dev/null && echo 1")) {
-      my $ans = prompt("Pod $pod_name уже существует. Пересоздать? [y/N]: ", 'n');
-      if ($ans =~ /^(y|yes|д|да)$/i) {
+      my $recreate = $FORCE ? 'y' : prompt("Pod $pod_name уже существует. Пересоздать? [y/N]: ", 'n');
+      if ($recreate =~ /^(y|yes|д|да)$/i) {
         system("podman pod stop $pod_name 2>/dev/null");
         system("podman pod rm $pod_name 2>/dev/null");
         play_kube($kube);
@@ -1286,10 +1281,21 @@ sub main {
     exit 0;
   }
 
-  # Parse --update=<comp> (comma-separated or single)
+  # Parse --update[=<comp>]
+  my $update_bare = grep { $_ eq '--update' } @ARGV;
   my ($update_raw) = map { /^--update=(.+)/ ? $1 : () } @ARGV;
-  if ($update_raw) {
-    my @update_targets = split /[,+]\s*/, lc $update_raw;
+  if ($update_bare || $update_raw) {
+    $FORCE = 1;
+    my @update_targets;
+    if ($update_raw) {
+      @update_targets = split /[,+]\s*/, lc $update_raw;
+    } else {
+      read_deploy_yaml() or do { err "Нет deploy.yaml. Сначала выполните установку."; exit 1 };
+      my @available = grep { $comp{$_} } qw(infra collector app ai web);
+      my $default = join(', ', @available);
+      my $ans = prompt("Компоненты для обновления (через запятую) [$default]: ", $default);
+      @update_targets = split /[,+]\s*/, lc $ans;
+    }
     my @valid = qw(infra collector app ai web ollama all);
     for my $t (@update_targets) {
       unless (grep { $_ eq $t } @valid) {

@@ -81,15 +81,15 @@ function createLogVolumeWeekChart(elId, data, dataPrev) {
   }
   var options = {
     ...ptChartTheme,
-    chart: { type: 'bar', height: 225, toolbar: { show: false },
+    chart: { type: 'area', height: 225, toolbar: { show: false },
              background: 'transparent', foreColor: '#7a8294',
              fontFamily: 'Roboto' },
     series: series,
     colors: ['#00d4ff', 'rgba(122,130,148,.4)'],
+    stroke: { curve: 'smooth', width: 2 },
+    fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.3, opacityTo: 0, stops: [0, 100] } },
     dataLabels: { enabled: false },
-    plotOptions: {
-      bar: { columnWidth: '50%', borderRadius: 2 }
-    },
+    markers: { size: 0 },
     xaxis: {
       type: 'datetime',
       labels: {
@@ -123,15 +123,15 @@ function createLogVolumeMonthChart(elId, data, dataPrev) {
   }
   var options = {
     ...ptChartTheme,
-    chart: { type: 'bar', height: 225, toolbar: { show: false },
+    chart: { type: 'area', height: 225, toolbar: { show: false },
              background: 'transparent', foreColor: '#7a8294',
              fontFamily: 'Roboto' },
     series: series,
     colors: ['#7b61ff', 'rgba(122,130,148,.4)'],
+    stroke: { curve: 'smooth', width: 2 },
+    fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.3, opacityTo: 0, stops: [0, 100] } },
     dataLabels: { enabled: false },
-    plotOptions: {
-      bar: { columnWidth: '70%', borderRadius: 1 }
-    },
+    markers: { size: 0 },
     xaxis: {
       type: 'datetime',
       labels: {
@@ -170,21 +170,32 @@ function switchVolTab(tab) {
   }
 }
 
-function createAnomalyTrendChart(elId, data) {
+function createAnomalyTrendChart(elId, data, forecast) {
+  var series = [{
+    name: 'Anomalies',
+    type: 'bar',
+    data: data.map(d => ({ x: d.hour, y: d.count }))
+  }];
+  if (forecast && forecast.length) {
+    series.push({
+      name: 'Trend',
+      type: 'line',
+      data: forecast.map(d => ({ x: d.hour, y: d.count }))
+    });
+  }
   var options = {
     ...ptChartTheme,
-    chart: { type: 'bar', height: 180, toolbar: { show: false },
+    chart: { type: 'line', height: 180, toolbar: { show: false },
              background: 'transparent', foreColor: '#7a8294',
              fontFamily: 'Roboto', sparkline: { enabled: false } },
-    series: [{
-      name: 'Anomalies',
-      data: data.map(d => ({ x: d.hour, y: d.count }))
-    }],
-    colors: ['#ff5252'],
+    series: series,
+    colors: ['#ff5252', '#ffd740'],
+    stroke: { width: [0, 2] },
     plotOptions: {
       bar: { columnWidth: '60%', borderRadius: 2, distributed: false }
     },
     dataLabels: { enabled: false },
+    markers: { size: [0, 0] },
     xaxis: {
       type: 'datetime',
       labels: {
