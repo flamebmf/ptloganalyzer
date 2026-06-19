@@ -313,11 +313,13 @@ class SyslogServer:
 
                     # Update hourly stats
                     stats_counter = Counter()
+                    stats_daily = Counter()
                     for r in records:
                         hour = r[1].replace(minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
                         if hour.tzinfo is None:
                             hour = hour.replace(tzinfo=timezone.utc)
                         stats_counter[(r[0], hour, r[3])] += 1
+                        stats_daily[(r[0], r[1].date(), r[3])] += 1
                     if stats_counter:
                         await conn.executemany(
                             "INSERT INTO log_stats_hourly (device_id, hour, severity, count) "
@@ -326,6 +328,20 @@ class SyslogServer:
                             "DO UPDATE SET count = log_stats_hourly.count + EXCLUDED.count",
                             [(k[0], k[1], k[2], v) for k, v in stats_counter.items()],
                         )
+                        await conn.executemany(
+                            "INSERT INTO log_stats_daily (device_id, day, severity, count) "
+                            "VALUES ($1, $2, $3, $4) "
+                            "ON CONFLICT (device_id, day, severity) "
+                            "DO UPDATE SET count = log_stats_daily.count + EXCLUDED.count",
+                            [(k[0], k[1], k[2], v) for k, v in stats_daily.items()],
+                        )
+                    # Retention: keep hourly stats for 90 days
+                    try:
+                        await conn.execute(
+                            "DELETE FROM log_stats_hourly WHERE hour < NOW() - INTERVAL '90 days'"
+                        )
+                    except Exception:
+                        pass
 
                     # Update template cache for known devices
                     dids = set(r[0] for r in records)
@@ -365,4 +381,5 @@ class SyslogServer:
             self.log.error("batch_insert_failed", error=str(e))
             # Re-queue failed batch to avoid data loss
             async with self._batch_lock:
-                self._batch = batch + self._batch
+                self._batch = batch + self._batch[:30000]  # cap to prevent unbounded growth
+            await asyncio.sleep(5)  # backoff on failure

@@ -152,6 +152,32 @@ class Database:
                     PRIMARY KEY (device_id, hour, severity)
                 )
             """)
+            # Daily rollup table for long-term storage (keep forever)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS log_stats_daily (
+                    device_id INT NOT NULL REFERENCES devices(id),
+                    day       DATE NOT NULL,
+                    severity  SMALLINT NOT NULL DEFAULT 6,
+                    count     INT NOT NULL DEFAULT 0,
+                    PRIMARY KEY (device_id, day, severity)
+                )
+            """)
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_stats_daily_day
+                ON log_stats_daily(day)
+            """)
+            # Rollup hourly → daily if daily is empty and hourly has data
+            has_hourly = await conn.fetchval("SELECT EXISTS (SELECT 1 FROM log_stats_hourly LIMIT 1)")
+            has_daily = await conn.fetchval("SELECT EXISTS (SELECT 1 FROM log_stats_daily LIMIT 1)")
+            if has_hourly and not has_daily:
+                await conn.execute("""
+                    INSERT INTO log_stats_daily (device_id, day, severity, count)
+                    SELECT device_id, hour::date, severity, SUM(count)
+                    FROM log_stats_hourly
+                    GROUP BY device_id, hour::date, severity
+                    ON CONFLICT (device_id, day, severity) DO NOTHING
+                """)
+                log.info("daily_stats_backfilled")
             # Backfill if table is empty
             exists = await conn.fetchval("SELECT EXISTS (SELECT 1 FROM log_stats_hourly LIMIT 1)")
             if not exists:
@@ -252,6 +278,10 @@ class Database:
             await conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_stats_hour_severity "
                 "ON log_stats_hourly(hour, severity)"
+            )
+            await conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_stats_hour_brin "
+                "ON log_stats_hourly USING BRIN (hour) WITH (pages_per_range = 32)"
             )
             await conn.execute("ANALYZE log_stats_hourly")
 
