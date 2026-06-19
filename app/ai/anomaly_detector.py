@@ -43,25 +43,30 @@ class AnomalyDetector:
             ") sub",
             device_id,
         )
-        recent = await self.db.fetchrow(
-            "SELECT COUNT(*) AS cnt, MAX(id) AS sample_id FROM syslog_messages "
+        recent_cnt = await self.db.fetchval(
+            "SELECT COALESCE(SUM(count), 0)::bigint FROM log_stats_hourly "
+            "WHERE device_id = $1 AND hour > NOW() - INTERVAL '1 hour'",
+            device_id,
+        )
+        recent_sample = await self.db.fetchval(
+            "SELECT MAX(id) FROM syslog_messages "
             "WHERE device_id = $1 AND ts > NOW() - INTERVAL '1 hour'",
             device_id,
         )
         if baseline and baseline["std_per_hour"] and baseline["std_per_hour"] > 0:
-            z_score = (recent["cnt"] - baseline["avg_per_hour"]) / baseline["std_per_hour"]
+            z_score = (recent_cnt - baseline["avg_per_hour"]) / baseline["std_per_hour"]
             if abs(z_score) > 3:
-                sid = recent["sample_id"]
+                sid = recent_sample
                 sid_str = f"#{sid} " if sid else ""
                 await self._insert_anomaly(
                     device_id,
                     "critical" if abs(z_score) > 5 else "warning",
                     "Anomalous log volume detected",
-                    f"{sid_str}{recent['cnt']} logs in last hour "
+                    f"{sid_str}{recent_cnt} logs in last hour "
                     f"(avg={baseline['avg_per_hour']:.0f}, z-score={z_score:.2f})",
                 )
                 log.warning("volume_anomaly", device_id=device_id,
-                             z_score=z_score, count=recent["cnt"])
+                             z_score=z_score, count=recent_cnt)
 
     async def _check_error_flood(self, device_id: int):
         recent = await self.db.fetch(

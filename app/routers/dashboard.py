@@ -14,10 +14,16 @@ _storage_cache = None
 _storage_cache_ts = 0
 _top_apps_cache = None
 _top_apps_cache_ts = 0
+_history_cache = None
+_history_cache_ts = 0
 
 
 @router.get("/dashboard/history")
 async def dashboard_history():
+    global _history_cache, _history_cache_ts
+    if time() - _history_cache_ts < 30 and _history_cache:
+        return _history_cache
+
     now = datetime.now(timezone.utc)
     rounded_now = now.replace(minute=0, second=0, microsecond=0)
     cutoff_day = rounded_now - timedelta(hours=24)
@@ -140,6 +146,9 @@ async def dashboard_history():
         "anomaly_trend": [dict(r) for r in anomaly_trend],
         "anomaly_forecast": anomaly_forecast,
     }
+    _history_cache = result
+    _history_cache_ts = time()
+    return result
 
 
 @router.get("/dashboard/storage")
