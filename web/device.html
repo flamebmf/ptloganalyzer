@@ -40,6 +40,17 @@
   <div id="deviceAnomalyList" style="font-size:.82rem"></div>
 </div>
 
+<!-- Recommendation modal -->
+<div class="modal-overlay" id="recModal" onclick="if(event.target===this)closeRecModal()" style="display:none">
+  <div class="modal-content" style="max-width:800px;width:92%">
+    <div class="modal-header">
+      <span id="recModalTitle">Рекомендация по устранению</span>
+      <button class="modal-close" onclick="closeRecModal()">&times;</button>
+    </div>
+    <div class="modal-body rec-body" id="recModalBody">Загрузка...</div>
+  </div>
+</div>
+
 <div class="chart-card" style="margin-top:14px">
   <div class="card-header">
     <div class="card-title"><span data-i18n="logs">Логи</span></div>
@@ -99,15 +110,18 @@ async function loadDevice() {
   if (!deviceId) return;
 
   try {
-    var dev = await apiGet('/api/devices/' + deviceId);
+    var [dev, stats] = await Promise.all([
+      apiGet('/api/devices/' + deviceId),
+      apiGet('/api/devices/' + deviceId + '/stats'),
+    ]);
     document.getElementById('deviceTitle').textContent = dev.name || dev.hostname || 'Device #' + deviceId;
-    var stats = await apiGet('/api/devices/' + deviceId + '/stats');
     var lastSeen = stats.last_seen ? formatTime(stats.last_seen) : '-';
     document.getElementById('deviceStats').innerHTML =
       '<div class="stat-badge">Logs <span class="stat-val">' + (stats.total||0) + '</span></div>'
       + '<div class="stat-badge">Last <span class="stat-val">' + lastSeen + '</span></div>'
       + '<div class="stat-badge">Errors <span class="stat-val">' + (stats.errors||0) + '</span></div>';
 
+    // Fire off remaining loads in parallel
     loadCharts();
     loadDeviceLogs();
     loadSummaries();
@@ -147,7 +161,7 @@ function renderLogList(semantic) {
   var show = semantic || _logsExpanded ? _allLogs : _allLogs.slice(0, 3);
   list.innerHTML = show.map(function(l) {
     var scoreHtml = l.score ? ' <span style="color:var(--pt-muted);font-size:.72rem">(' + (l.score*100).toFixed(0) + '%)</span>' : '';
-    return '<div class="log-line">'
+    return '<div class="log-line" onclick="openLogModal(' + l.id + ',' + deviceId + ')" style="cursor:pointer">'
       + '<span class="ts">' + formatTime(l.ts) + '</span>'
       + '<span class="sev ' + severityClass(l.severity) + '">' + severityBadge(l.severity) + '</span>'
       + '<span class="msg">' + l.message + scoreHtml + '</span>'
@@ -228,8 +242,9 @@ async function loadDeviceAnomalies() {
       return '<div style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.03);align-items:flex-start">'
         + '<span style="white-space:nowrap;font-size:.72rem;color:var(--pt-muted);min-width:80px">' + formatTime(a.detected_at) + '</span>'
         + '<span style="white-space:nowrap;font-size:.72rem;min-width:60px">' + dot + (a.severity === 'critical' ? 'Critical' : 'Warning') + '</span>'
-        + '<span style="flex:1;color:var(--pt-text)">' + escHtml(a.title) + '</span>'
+        + '<span style="flex:1;color:var(--pt-text)">' + convertLogIds(escHtml(a.title), deviceId) + '</span>'
         + (a.count > 1 ? '<span class="badge badge-err" style="font-size:.65rem">' + a.count + 'x</span>' : '')
+        + '<button class="btn btn-sm btn-outline" onclick="event.stopPropagation();openRec(' + a.id + ',\'' + escJs(a.title) + '\',' + deviceId + ')" style="font-size:.65rem;padding:2px 6px;margin-left:6px" title="Что можно сделать"><i class="bi bi-lightbulb"></i></button>'
         + '</div>';
     }).join('');
   } catch(err) { showToast('Ошибка: '+err, 'error'); }
@@ -334,6 +349,47 @@ function carouselGo(i) {
   if (i < 0 || i >= _summaryItems.length) return;
   _summaryIndex = i;
   renderSummaryItem();
+}
+
+function escJs(s) {
+  return s.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+}
+
+function openRec(id, title, deviceId) {
+  var overlay = document.getElementById('recModal');
+  var body = document.getElementById('recModalBody');
+  var titleEl = document.getElementById('recModalTitle');
+  titleEl.textContent = 'Рекомендация: ' + title;
+  body.innerHTML = '<div class="modal-loading"><div class="spinner"></div><span style="color:var(--pt-muted);font-size:.8rem">Загрузка...</span></div>';
+  overlay.style.display = 'flex';
+  overlay.dataset.id = id;
+  overlay.dataset.deviceId = deviceId;
+  loadRec(id);
+}
+
+function closeRecModal() {
+  document.getElementById('recModal').style.display = 'none';
+}
+
+function loadRec(id, refresh) {
+  var body = document.getElementById('recModalBody');
+  var params = refresh ? '?refresh=true' : '';
+  body.innerHTML = '<div class="modal-loading"><div class="spinner"></div><span style="color:var(--pt-muted);font-size:.8rem">' + (refresh ? 'Запрос к AI...' : 'Загрузка...') + '</span></div>';
+  apiPost('/api/anomalies/' + id + '/recommend' + params).then(function(r) {
+    if (r.error) {
+      body.innerHTML = '<span style="color:#ff5252">Ошибка: ' + r.error + '</span>';
+    } else {
+      var overlay = document.getElementById('recModal');
+      var did = overlay ? parseInt(overlay.dataset.deviceId) : null;
+      body.innerHTML = convertLogIds(mdToHtml(r.recommendation || '*Нет ответа*'), did)
+        + '<div style="margin-top:16px;display:flex;gap:8px;align-items:center;border-top:1px solid rgba(255,255,255,.06);padding-top:12px">'
+        + '<button class="btn btn-sm btn-outline" onclick="loadRec(' + id + ',true)"><i class="bi bi-arrow-clockwise"></i> Обновить</button>'
+        + (r.cached ? '<span style="font-size:.72rem;color:var(--pt-muted)"><i class="bi bi-check-circle" style="color:var(--pt-success)"></i> из кэша</span>' : '')
+        + '</div>';
+    }
+  }).catch(function(err) {
+    body.innerHTML = '<span style="color:#ff5252">Ошибка: ' + err + '</span>';
+  });
 }
 
 window.pageLoaded = loadDevice;
