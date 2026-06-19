@@ -88,15 +88,24 @@ async def get_app_stats(
     hours: int = Query(24, ge=1, le=168),
     limit: int = Query(10, ge=1, le=50),
     metric: str | None = Query(None),
+    filter: str | None = Query(None),
 ):
-    """Aggregate app_metrics by dimension (srcip, dstip, app, srcintf, etc)."""
+    """Aggregate app_metrics by dimension. Optional filter like 'action:deny' or 'type:utm'."""
     dim_col = f"fields->>'{dim}'"
     valid = {"srcip", "dstip", "srcintf", "dstintf", "app", "policy", "action", "service",
-             "policyname", "appcat", "srcport", "dstport", "proto", "osname"}
+             "policyname", "appcat", "srcport", "dstport", "proto", "osname", "type", "subtype"}
     if dim not in valid:
         raise HTTPException(400, f"Invalid dim: {dim}. Valid: {', '.join(sorted(valid))}")
 
     where_dim = f"jsonb_exists(fields, '{dim}')"
+    filter_sql = ""
+    filter_args = []
+    if filter and ':' in filter:
+        fk, fv = filter.split(':', 1)
+        fi = 5  # next $ position
+        filter_sql = f" AND fields->>'{fk}' = ${fi}"
+        filter_args.append(fv)
+
     # Choose aggregation metric
     if metric == "sentbyte":
         agg = f"COALESCE(SUM((fields->>'sentbyte')::bigint), 0)"
@@ -117,9 +126,10 @@ async def get_app_stats(
         "WHERE device_id = $1 AND app_id = $2 "
         f"AND ts > NOW() - ($3 || ' hours')::INTERVAL "
         f"AND {where_dim} "
+        f"{filter_sql} "
         f"GROUP BY {dim_col} "
         f"ORDER BY {order} "
         "LIMIT $4",
-        device_id, app_id, str(hours), limit,
+        device_id, app_id, str(hours), limit, *filter_args,
     )
     return {"items": [dict(r) for r in rows], "dim": dim}
