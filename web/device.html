@@ -35,9 +35,10 @@
 <div class="chart-card" style="margin-top:14px">
   <div class="card-header">
     <div class="card-title"><i class="bi bi-exclamation-triangle"></i> <span data-i18n="anomalies">Аномалии</span> <span class="badge badge-err" id="deviceAnomalyCount" style="font-size:.7rem;margin-left:6px">0</span></div>
-    <button class="btn btn-outline btn-sm" onclick="loadDeviceAnomalies()"><i class="bi bi-arrow-clockwise"></i></button>
+    <button class="btn btn-outline btn-sm" onclick="loadDeviceAnomalies(0)"><i class="bi bi-arrow-clockwise"></i></button>
   </div>
   <div id="deviceAnomalyList" style="font-size:.82rem"></div>
+  <div id="anomalyPagination" class="pagination-bar" style="display:none;justify-content:center;gap:8px;padding:12px 0"></div>
 </div>
 
 <!-- Recommendation modal -->
@@ -51,12 +52,23 @@
   </div>
 </div>
 
-<div class="chart-card" style="margin-top:14px">
+<!-- Anomaly detail modal -->
+<div class="modal-overlay" id="anomalyDetailModal" onclick="if(event.target===this)closeAnomalyDetail()" style="display:none">
+  <div class="modal-content" style="max-width:700px;width:92%">
+    <div class="modal-header">
+      <span id="anomalyDetailTitle" style="font-weight:700">Детали аномалии</span>
+      <button class="modal-close" onclick="closeAnomalyDetail()">&times;</button>
+    </div>
+    <div class="modal-body" id="anomalyDetailBody" style="font-size:.85rem;line-height:1.6"></div>
+  </div>
+</div>
+
+<div class="chart-card" style="margin-top:14px" id="zmstatCard" hidden>
   <div class="card-header">
-    <div class="card-title"><i class="bi bi-graph-up"></i> Carbonio zmstat <span id="zmstatBadge" class="badge badge-info" style="font-size:.65rem">—</span></div>
+    <div class="card-title"><i class="bi bi-graph-up"></i> Приложения <span id="zmstatBadge" class="badge badge-info" style="font-size:.65rem">—</span></div>
     <div style="display:flex;gap:6px">
-      <select id="zmstatMetric" class="form-select" style="font-size:.72rem;width:auto" onchange="loadZmstat()">
-        <option value="">— metric —</option>
+      <select id="zmstatMetric" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:6px 10px;color:var(--pt-text);font-family:inherit;font-size:.75rem;outline:none" onchange="loadZmstat()">
+        <option value="">— выберите —</option>
       </select>
       <button class="btn btn-outline btn-sm" onclick="loadZmstat()"><i class="bi bi-arrow-clockwise"></i></button>
     </div>
@@ -88,6 +100,9 @@ var sevChart = null;
 var _allLogs = [];
 var _logsExpanded = false;
 var _semanticMode = false;
+var _anomalyPage = 0;
+var _anomalyPageSize = 10;
+var _anomalyTotal = 0;
 
 // Summary carousel state
 var _summaryType = '';
@@ -129,10 +144,12 @@ async function loadDevice() {
     ]);
     document.getElementById('deviceTitle').textContent = dev.name || dev.hostname || 'Device #' + deviceId;
     var lastSeen = stats.last_seen ? formatTime(stats.last_seen) : '-';
+    var totalFmt = (stats.total||0).toLocaleString();
+    var errFmt = (stats.errors||0).toLocaleString();
     document.getElementById('deviceStats').innerHTML =
-      '<div class="stat-badge">Logs <span class="stat-val">' + (stats.total||0) + '</span></div>'
-      + '<div class="stat-badge">Last <span class="stat-val">' + lastSeen + '</span></div>'
-      + '<div class="stat-badge">Errors <span class="stat-val">' + (stats.errors||0) + '</span></div>';
+      '<span class="stat-badge">Logs <span class="stat-val">' + totalFmt + '</span></span>'
+      + '<span class="stat-badge">Last <span class="stat-val">' + lastSeen + '</span></span>'
+      + '<span class="stat-badge">Errors <span class="stat-val">' + errFmt + '</span></span>';
 
     // Fire off remaining loads in parallel
     loadCharts();
@@ -238,30 +255,90 @@ async function loadDeviceLogs() {
   } catch(err) { showToast('Error: '+err, 'error'); }
 }
 
-async function loadDeviceAnomalies() {
+async function loadDeviceAnomalies(page) {
   if (!deviceId) return;
+  if (typeof page === 'number') _anomalyPage = page;
   try {
-    var data = await apiGet('/api/anomalies?device_id=' + deviceId + '&limit=50&resolved=false');
+    var offset = _anomalyPage * _anomalyPageSize;
+    var data = await apiGet('/api/anomalies?device_id=' + deviceId + '&limit=' + _anomalyPageSize + '&offset=' + offset + '&resolved=false');
     var el = document.getElementById('deviceAnomalyList');
     var countEl = document.getElementById('deviceAnomalyCount');
     var items = data.items || [];
-    if (countEl) countEl.textContent = data.total || items.length;
+    _anomalyTotal = data.total || items.length;
+    if (countEl) countEl.textContent = _anomalyTotal;
     if (items.length === 0) {
       el.innerHTML = '<div class="empty-state" style="padding:12px"><p>Нет активных аномалий</p></div>';
+      document.getElementById('anomalyPagination').style.display = 'none';
       return;
     }
     el.innerHTML = items.map(function(a) {
       var sevColor = a.severity === 'critical' ? '#ff5252' : (a.severity === 'warning' ? '#ffd740' : '#00d4ff');
-      var dot = '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + sevColor + ';margin-right:6px"></span>';
-      return '<div style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.03);align-items:flex-start">'
-        + '<span style="white-space:nowrap;font-size:.72rem;color:var(--pt-muted);min-width:80px">' + formatTime(a.detected_at) + '</span>'
-        + '<span style="white-space:nowrap;font-size:.72rem;min-width:60px">' + dot + (a.severity === 'critical' ? 'Critical' : 'Warning') + '</span>'
-        + '<span style="flex:1;color:var(--pt-text)">' + convertLogIds(escHtml(a.title), deviceId) + '</span>'
-        + (a.count > 1 ? '<span class="badge badge-err" style="font-size:.65rem">' + a.count + 'x</span>' : '')
-        + '<button class="btn btn-sm btn-outline" onclick="event.stopPropagation();openRec(' + a.id + ',\'' + escJs(a.title) + '\',' + deviceId + ')" style="font-size:.65rem;padding:2px 6px;margin-left:6px" title="Что можно сделать"><i class="bi bi-lightbulb"></i></button>'
+      var dot = '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + sevColor + ';margin-right:6px;flex-shrink:0"></span>';
+      return '<div class="anomaly-row" onclick="openAnomalyDetail(' + a.id + ',\'' + escJs(a.title) + '\',\'' + escJs(a.severity) + '\',\'' + escJs(a.description||'') + '\',\'' + (a.detected_at||'') + '\',\'' + (a.last_seen||'') + '\',' + (a.count||1) + ')" style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.03);align-items:center;cursor:pointer">'
+        + '<span style="white-space:nowrap;font-size:.72rem;color:var(--pt-muted);min-width:75px">' + formatTime(a.detected_at) + '</span>'
+        + '<span style="white-space:nowrap;font-size:.72rem;min-width:55px;display:flex;align-items:center">' + dot + (a.severity==='critical'?'Crit':'Warn') + '</span>'
+        + '<span style="flex:1;color:var(--pt-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + convertLogIds(escHtml(a.title), deviceId) + '</span>'
+        + (a.count > 1 ? '<span class="badge badge-err" style="font-size:.65rem;flex-shrink:0">' + a.count + 'x</span>' : '')
+        + '<button class="btn btn-sm btn-outline" onclick="event.stopPropagation();openRec(' + a.id + ',\'' + escJs(a.title) + '\',' + deviceId + ')" style="font-size:.65rem;padding:2px 6px;flex-shrink:0" title="Что можно сделать"><i class="bi bi-lightbulb"></i></button>'
         + '</div>';
     }).join('');
+    // Pagination
+    var pages = Math.ceil(_anomalyTotal / _anomalyPageSize);
+    var pgEl = document.getElementById('anomalyPagination');
+    if (pages > 1) {
+      var pgHtml = '';
+      pgHtml += '<button class="btn btn-sm btn-outline" onclick="loadDeviceAnomalies(0)"' + (_anomalyPage===0?' disabled':'') + '><i class="bi bi-chevron-double-left"></i></button>';
+      pgHtml += '<button class="btn btn-sm btn-outline" onclick="loadDeviceAnomalies(' + (_anomalyPage-1) + ')"' + (_anomalyPage===0?' disabled':'') + '><i class="bi bi-chevron-left"></i></button>';
+      for (var p = Math.max(0,_anomalyPage-2); p < Math.min(pages,_anomalyPage+3); p++) {
+        pgHtml += '<button class="btn btn-sm ' + (p===_anomalyPage?'btn-primary':'btn-outline') + '" onclick="loadDeviceAnomalies(' + p + ')">' + (p+1) + '</button>';
+      }
+      pgHtml += '<button class="btn btn-sm btn-outline" onclick="loadDeviceAnomalies(' + (_anomalyPage+1) + ')"' + (_anomalyPage>=pages-1?' disabled':'') + '><i class="bi bi-chevron-right"></i></button>';
+      pgHtml += '<button class="btn btn-sm btn-outline" onclick="loadDeviceAnomalies(' + (pages-1) + ')"' + (_anomalyPage>=pages-1?' disabled':'') + '><i class="bi bi-chevron-double-right"></i></button>';
+      pgEl.innerHTML = pgHtml;
+      pgEl.style.display = 'flex';
+    } else {
+      pgEl.style.display = 'none';
+    }
   } catch(err) { showToast('Ошибка: '+err, 'error'); }
+}
+
+function openAnomalyDetail(id, title, severity, description, detectedAt, lastSeen, count) {
+  var overlay = document.getElementById('anomalyDetailModal');
+  document.getElementById('anomalyDetailTitle').textContent = title;
+  var sevColor = severity === 'critical' ? '#ff5252' : '#ffd740';
+  var html = '<div style="margin-bottom:12px">'
+    + '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + sevColor + '"></span> '
+    + '<b>' + (severity === 'critical' ? 'Critical' : 'Warning') + '</b>'
+    + (count > 1 ? ' <span class="badge badge-err" style="font-size:.7rem">x' + count + '</span>' : '')
+    + '</div>';
+  html += '<div style="color:var(--pt-muted);font-size:.78rem;margin-bottom:10px">'
+    + formatTime(detectedAt) + (lastSeen && count > 1 ? ' — ' + formatTime(lastSeen) : '')
+    + '</div>';
+  if (description) {
+    html += '<div style="font-size:.85rem;line-height:1.7;white-space:pre-wrap;word-break:break-word">'
+      + yandexLinks(convertLogIds(escHtml(description), deviceId))
+      + '</div>';
+  } else {
+    html += '<div style="color:var(--pt-muted);font-size:.85rem">Нет описания</div>';
+  }
+  html += '<div style="margin-top:14px;border-top:1px solid rgba(255,255,255,.06);padding-top:10px">'
+    + '<button class="btn btn-sm btn-outline" onclick="event.stopPropagation();closeAnomalyDetail();openRec(' + id + ',\'' + escJs(title) + '\',' + deviceId + ')" style="font-size:.75rem"><i class="bi bi-lightbulb"></i> Что можно сделать</button>'
+    + '</div>';
+  document.getElementById('anomalyDetailBody').innerHTML = html;
+  overlay.style.display = 'flex';
+}
+
+function closeAnomalyDetail() {
+  document.getElementById('anomalyDetailModal').style.display = 'none';
+}
+
+function yandexLinks(text) {
+  var m = text.match(/^(.+?) . повтор/);
+  if (m) {
+    var q = encodeURIComponent(m[1]);
+    return '<a href="https://yandex.ru/search/?text=' + q + '" target="_blank" rel="noopener" class="anomaly-search-link">' + m[1] + '</a>' + text.slice(m[0].length);
+  }
+  return text;
 }
 
 function todayStr() {
@@ -330,10 +407,25 @@ function renderSummaryItem() {
     + (s.model ? ' <span style="color:var(--pt-muted);font-size:.7rem">[' + s.model + ']</span>' : '')
     + '</small>';
 
-  el.innerHTML = '<div class="summary-block">'
-    + hdr
-    + '<div style="font-size:.85rem;line-height:1.7">' + convertLogIds(mdToHtml(s.summary)) + '</div>'
-    + '</div>';
+  var summaryHtml = convertLogIds(mdToHtml(s.summary));
+  // Collapse: show first ~10 lines, expand on click
+  var lines = summaryHtml.split('\n');
+  var collapsed = lines.length > 12;
+  if (collapsed) {
+    var shortHtml = lines.slice(0, 10).join('\n');
+    var fullId = 'summaryFull_' + _summaryIndex;
+    el.innerHTML = '<div class="summary-block">'
+      + hdr
+      + '<div id="' + fullId + '_short" style="font-size:.85rem;line-height:1.7;max-height:18em;overflow:hidden">' + shortHtml + '</div>'
+      + '<div id="' + fullId + '_full" style="display:none;font-size:.85rem;line-height:1.7">' + summaryHtml + '</div>'
+      + '<button class="btn btn-sm btn-outline" onclick="var s=document.getElementById(\'' + fullId + '_short\');var f=document.getElementById(\'' + fullId + '_full\');var t=this;s.style.display=(s.style.display===\'none\'?\'block\':\'none\');f.style.display=(f.style.display===\'none\'?\'block\':\'none\');t.textContent=(s.style.display==\'none\'?\'... Свернуть\':\'... Читать дальше\')" style="font-size:.7rem;margin-top:4px">... Читать дальше</button>'
+      + '</div>';
+  } else {
+    el.innerHTML = '<div class="summary-block">'
+      + hdr
+      + '<div style="font-size:.85rem;line-height:1.7">' + summaryHtml + '</div>'
+      + '</div>';
+  }
 
   // Carousel bar
   if (_summaryItems.length > 1) {
@@ -372,18 +464,19 @@ async function initZmstat() {
   try {
     var data = await apiGet('/api/app-metrics/list?device_id=' + deviceId);
     var apps = data.apps || [];
-    var sel = document.getElementById('zmstatMetric');
-    document.getElementById('zmstatBadge').textContent = apps.length + ' apps';
+    var card = document.getElementById('zmstatCard');
     if (apps.length === 0) {
-      sel.innerHTML = '<option value="">— no data —</option>';
-      document.getElementById('zmstatChart').innerHTML = '<div class="empty-state" style="padding:20px"><p>Нет данных приложений</p></div>';
+      card.hidden = true;
       return;
     }
-    sel.innerHTML = '<option value="">— app —</option>'
+    card.hidden = false;
+    var sel = document.getElementById('zmstatMetric');
+    document.getElementById('zmstatBadge').textContent = apps.length + ' apps';
+    sel.innerHTML = '<option value="">— выберите —</option>'
       + apps.map(function(a) { return '<option value="' + a + '">' + a + '</option>'; }).join('');
     sel.value = apps[0];
     loadZmstat();
-  } catch(err) {}
+  } catch(err) { card.hidden = true; }
 }
 
 async function loadZmstat() {
