@@ -1,0 +1,72 @@
+# Copyright (c) 2026 PlurumTech.com
+# SPDX-License-Identifier: LicenseRef-Personal-Use-Only
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ptlog-infra
+  labels:
+    app: ptlog
+    component: infra
+spec:
+  restartPolicy: Always
+  containers:
+  - name: postgres
+    image: docker.io/pgvector/pgvector:pg17
+    ports:
+    - containerPort: 5432
+      hostPort: 5432
+    env:
+    - name: POSTGRES_DB
+      value: ptloganalyzer
+    - name: POSTGRES_USER
+      value: ptlog
+    - name: POSTGRES_PASSWORD
+      value: "__DB_PASSWORD__"
+    - name: POSTGRES_INITDB_ARGS
+      value: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    args:
+    - postgres
+    - -c
+    - max_wal_size=8GB
+    - -c
+    - checkpoint_timeout=10min
+    - -c
+    - checkpoint_completion_target=0.9
+    volumeMounts:
+    - name: pgdata
+      mountPath: /var/lib/postgresql/data
+    - name: initdb
+      mountPath: /docker-entrypoint-initdb.d
+    livenessProbe:
+      exec:
+        command:
+        - pg_isready
+        - -U
+        - ptlog
+        - -d
+        - ptloganalyzer
+        - -q
+      initialDelaySeconds: 30
+      periodSeconds: 30
+      timeoutSeconds: 5
+    readinessProbe:
+      exec:
+        command:
+        - pg_isready
+        - -U
+        - ptlog
+        - -d
+        - ptloganalyzer
+        - -q
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      timeoutSeconds: 5
+  volumes:
+  - name: pgdata
+    hostPath:
+      path: __DATA_DIR__/data/pgdata
+      type: DirectoryOrCreate
+  - name: initdb
+    hostPath:
+      path: __DATA_DIR__/initdb
+      type: DirectoryOrCreate
