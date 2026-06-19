@@ -291,11 +291,14 @@ class SyslogServer:
                         enabled = self._get_cached_apps(did)
                         if enabled is None:
                             en_rows = await conn.fetch(
-                                "SELECT app_id FROM device_apps "
-                                "WHERE device_id = $1 AND enabled = true",
+                                "SELECT app_id, enabled FROM device_apps "
+                                "WHERE device_id = $1",
                                 did,
                             )
-                            enabled = [e["app_id"] for e in en_rows]
+                            # Disabled apps from DB
+                            disabled = {e["app_id"] for e in en_rows if not e["enabled"]}
+                            # All registered parsers minus explicitly disabled ones
+                            enabled = [a for a in APP_PARSERS if a not in disabled]
                             self._set_cached_apps(did, enabled)
                         for app_id, fields in r[11]:
                             if app_id in enabled:

@@ -49,7 +49,7 @@ async def get_device_apps(device_id: int):
     apps = {r["app_id"]: r["enabled"] for r in rows}
     for aid in APP_PARSERS:
         if aid not in apps:
-            apps[aid] = False
+            apps[aid] = True  # new parsers enabled by default
     return apps
 
 
