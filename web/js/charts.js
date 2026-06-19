@@ -306,7 +306,11 @@ function createSeverityChart(elId, data) {
     plotOptions: {
       pie: {
         donut: { size: '65%', labels: {
-          show: true, total: { show: true, label: 'Total', color: '#e4e8ee' }
+          show: true,
+          total: { show: true, label: 'Total', color: '#e4e8ee',
+                   fontSize: '13px', fontFamily: 'Roboto' },
+          value: { fontSize: '20px', fontFamily: 'Roboto', color: '#e4e8ee' },
+          name: { fontSize: '11px', fontFamily: 'Roboto' }
         }}
       }
     }
