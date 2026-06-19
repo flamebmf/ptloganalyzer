@@ -35,7 +35,14 @@ async def get_app_series(
         "ORDER BY ts",
         device_id, app_id, str(hours),
     )
-    return {"items": [{"ts": r["ts"].isoformat(), "fields": dict(r["fields"])} for r in rows]}
+    items = []
+    for r in rows:
+        f = r["fields"]
+        if isinstance(f, str):
+            import json
+            f = json.loads(f)
+        items.append({"ts": r["ts"].isoformat(), "fields": f})
+    return {"items": items}
 
 
 class DeviceAppToggle(BaseModel):
