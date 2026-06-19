@@ -53,6 +53,19 @@
 
 <div class="chart-card" style="margin-top:14px">
   <div class="card-header">
+    <div class="card-title"><i class="bi bi-graph-up"></i> Carbonio zmstat <span id="zmstatBadge" class="badge badge-info" style="font-size:.65rem">—</span></div>
+    <div style="display:flex;gap:6px">
+      <select id="zmstatMetric" class="form-select" style="font-size:.72rem;width:auto" onchange="loadZmstat()">
+        <option value="">— metric —</option>
+      </select>
+      <button class="btn btn-outline btn-sm" onclick="loadZmstat()"><i class="bi bi-arrow-clockwise"></i></button>
+    </div>
+  </div>
+  <div id="zmstatChart" style="height:160px"></div>
+</div>
+
+<div class="chart-card" style="margin-top:14px">
+  <div class="card-header">
     <div class="card-title"><span data-i18n="logs">Логи</span></div>
     <div>
       <button class="btn btn-outline btn-sm" id="toggleLogsBtn" onclick="toggleLogs()" style="display:none"><i class="bi bi-chevron-down"></i> <span id="toggleLogsLabel">Показать все</span></button>
@@ -126,6 +139,7 @@ async function loadDevice() {
     loadDeviceLogs();
     loadSummaries();
     loadDeviceAnomalies();
+    initZmstat();
   } catch(err) { showToast('Error: '+err, 'error'); }
 }
 
@@ -349,6 +363,81 @@ function carouselGo(i) {
   if (i < 0 || i >= _summaryItems.length) return;
   _summaryIndex = i;
   renderSummaryItem();
+}
+
+var _zmstatChart = null;
+
+async function initZmstat() {
+  if (!deviceId) return;
+  try {
+    var data = await apiGet('/api/zmstat/metrics?device_id=' + deviceId);
+    var sel = document.getElementById('zmstatMetric');
+    var metrics = data.metrics || [];
+    sel.innerHTML = '<option value="">— metric —</option>'
+      + metrics.map(function(m) { return '<option value="' + m + '">' + m + '</option>'; }).join('');
+    document.getElementById('zmstatBadge').textContent = metrics.length + ' metrics';
+    if (metrics.length > 0) {
+      sel.value = metrics[0];
+      loadZmstat();
+    }
+  } catch(err) {}
+}
+
+async function loadZmstat() {
+  if (!deviceId) return;
+  var metric = document.getElementById('zmstatMetric').value;
+  if (!metric) return;
+  try {
+    var data = await apiGet('/api/zmstat/series?device_id=' + deviceId + '&metric=' + metric + '&hours=24');
+    var items = data.items || [];
+    if (_zmstatChart) _zmstatChart.destroy();
+    if (items.length === 0) {
+      document.getElementById('zmstatChart').innerHTML = '<div class="empty-state" style="padding:20px"><p>No data</p></div>';
+      return;
+    }
+    // Discover numeric fields
+    var fieldNames = Object.keys(items[0].fields || {});
+    var numericFields = fieldNames.filter(function(f) { return typeof items[0].fields[f] === 'number'; });
+    if (numericFields.length === 0) {
+      document.getElementById('zmstatChart').innerHTML = '<div class="empty-state" style="padding:20px"><p>No numeric fields</p></div>';
+      return;
+    }
+    var datasets = numericFields.map(function(f) {
+      var vals = items.map(function(d) { return d.fields[f] != null ? d.fields[f] : null; });
+      // Calculate visible range
+      var nonNull = vals.filter(function(v) { return v != null; });
+      var min = Math.min.apply(null, nonNull);
+      var max = Math.max.apply(null, nonNull);
+      var range = max - min || 1;
+      return {
+        label: f,
+        data: items.map(function(d, i) { return {x: new Date(d.ts), y: d.fields[f]}; }),
+        borderColor: ['#00d4ff','#ff5252','#ffd740','#00e676','#7c4dff','#ff6d00','#00bcd4','#e040fb'][numericFields.indexOf(f) % 8],
+        backgroundColor: 'transparent',
+        borderWidth: 1.5,
+        pointRadius: 0,
+        fill: false,
+        tension: 0.1,
+        spanGaps: true,
+        yAxisID: f === 'fd_count' || numericFields.length === 1 ? 'y' : 'y1',
+      };
+    });
+    _zmstatChart = new Chart(document.getElementById('zmstatChart'), {
+      type: 'line',
+      data: { datasets: datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        interaction: { mode: 'nearest', intersect: false },
+        plugins: { legend: { display: true, labels: { boxWidth: 10, font: { size: 10 }, color: '#aaa' } } },
+        scales: {
+          x: { type: 'time', time: { unit: 'hour' }, grid: { color: 'rgba(255,255,255,.04)' }, ticks: { color: '#777', font: { size: 9 } } },
+          y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,.04)' }, ticks: { color: '#777', font: { size: 9 } } },
+        },
+      },
+    });
+  } catch(err) { showToast('Error: '+err, 'error'); }
 }
 
 function escJs(s) {

@@ -271,6 +271,26 @@ class Database:
                 "ALTER TABLE devices ADD COLUMN IF NOT EXISTS template_id INT REFERENCES parse_templates(id)"
             )
 
+            # ── zmstat metrics ──
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS zmstat_metrics (
+                    id          BIGSERIAL,
+                    device_id   INT NOT NULL REFERENCES devices(id),
+                    ts          TIMESTAMPTZ NOT NULL,
+                    metric_name VARCHAR(100) NOT NULL,
+                    fields      JSONB NOT NULL DEFAULT '{}',
+                    PRIMARY KEY (id, ts)
+                ) PARTITION BY RANGE (ts)
+            """)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS zmstat_metrics_default
+                PARTITION OF zmstat_metrics DEFAULT
+            """)
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_zmstat_device_metric
+                ON zmstat_metrics(device_id, metric_name, ts DESC)
+            """)
+
             # ── Runtime settings (key-value) ──
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS app_settings (
@@ -285,6 +305,7 @@ class Database:
             ("default", "Автоопределение формата", "default", False),
             ("rfc3164_tag", "RFC3164 с извлечением APPNAME[PID]: из сообщения", "rfc3164_tag", True),
             ("aruba_iap", "Aruba IAP (Instant Access Point)", "aruba_iap", True),
+            ("zimbramon", "Carbonio/Zimbra zmstat metrics (nginx, fd, mailbox, sql, etc)", "zimbramon", True),
         ]
         for name, desc, ptype, is_builtin in builtins:
             existing = await self.fetchval(

@@ -227,10 +227,66 @@ def parse_aruba_iap(raw: str, source_addr) -> dict | None:
     })
 
 
+# Zimbra/Carbonio monitor (zimbramon)
+# Format:
+#   <PRI>TIMESTAMP HOSTNAME zimbramon[PID]: PID:info: zmstat METRIC.csv: HEADERS:: VALUES
+ZIMBRAMON_RE = re.compile(
+    r"<(\d{1,3})>"                                          # PRI
+    r"(\S{3}\s+\d{1,2}\s\d{2}:\d{2}:\d{2})\s"              # TIMESTAMP
+    r"(\S+)\s"                                              # HOSTNAME
+    r"zimbramon\[\d+\]:\s+\d+:info:\s+"                     # zimbramon[PID]: PID:info:
+    r"zmstat\s+(\S+)\.csv:\s+"                              # zmstat METRIC.csv:
+    r"(.*?)::\s*(.*)"                                       # HEADERS:: VALUES
+)
+
+
+def parse_zimbramon(raw: str, source_addr) -> dict | None:
+    m = ZIMBRAMON_RE.match(raw)
+    if not m:
+        return None
+    pri = int(m.group(1))
+    facility, severity = parse_priority(pri)
+    metric_name = m.group(4)
+    headers = m.group(5)
+    values = m.group(6)
+    csv_headers = [h.strip() for h in headers.split(",")] if headers else []
+    csv_values = [v.strip() for v in values.split(",")] if values else []
+    fields = {}
+    for i, h in enumerate(csv_headers):
+        if i < len(csv_values):
+            v = csv_values[i]
+            # Try numeric conversion
+            try:
+                if "." in v:
+                    fields[h] = float(v)
+                else:
+                    fields[h] = int(v)
+            except (ValueError, TypeError):
+                fields[h] = v
+        else:
+            fields[h] = None
+    msg = f"zmstat {metric_name}: " + ", ".join(f"{h}={v}" for h, v in fields.items())
+    return _extract_links({
+        "facility": facility,
+        "severity": severity,
+        "timestamp": parse_timestamp(m.group(2)),
+        "hostname": m.group(3),
+        "app_name": f"zmstat-{metric_name}",
+        "process_id": "",
+        "msgid": "",
+        "message": msg,
+        "raw": raw,
+        "source_ip": source_addr[0] if source_addr else None,
+        "zmstat_metric": metric_name,
+        "zmstat_fields": fields,
+    })
+
+
 PARSERS = {
     "default": lambda raw, addr: parse_syslog_raw(raw, addr),
     "rfc3164_tag": parse_rfc3164_tag,
     "aruba_iap": parse_aruba_iap,
+    "zimbramon": parse_zimbramon,
 }
 
 
