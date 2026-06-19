@@ -1,6 +1,7 @@
 # Copyright (c) 2026 PlurumTech.com
 # SPDX-License-Identifier: LicenseRef-Personal-Use-Only
 import asyncio
+import json
 import structlog
 from collections import Counter
 from datetime import datetime, timezone
@@ -302,7 +303,7 @@ class SyslogServer:
                             self._set_cached_apps(did, enabled)
                         for app_id, fields in r[11]:
                             if app_id in enabled:
-                                app_rows.append((did, app_id, r[1], fields))
+                                app_rows.append((did, app_id, r[1], json.dumps(fields)))
                     if app_rows:
                         await conn.executemany(
                             "INSERT INTO app_metrics (device_id, app_id, ts, fields) "
