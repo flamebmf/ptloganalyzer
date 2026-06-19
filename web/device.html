@@ -321,7 +321,7 @@ function openAnomalyDetail(id, title, severity, description, detectedAt, lastSee
     + formatTime(detectedAt) + (lastSeen && count > 1 ? ' — ' + formatTime(lastSeen) : '')
     + '</div>';
   if (description) {
-    html += '<div style="font-size:.85rem;line-height:1.7;white-space:pre-wrap;word-break:break-word">'
+    html += '<div style="font-size:.85rem;line-height:1.7;white-space:pre-wrap;word-break:break-word;padding:12px;background:rgba(255,255,255,.02);border-radius:8px;border:1px solid rgba(255,255,255,.04)">'
       + yandexLinks(convertLogIds(escHtml(description), deviceId))
       + '</div>';
   } else {
@@ -414,24 +414,20 @@ function renderSummaryItem() {
     + '</small>';
 
   var summaryHtml = convertLogIds(mdToHtml(s.summary));
-  // Collapse: show first ~10 lines, expand on click
-  var lines = summaryHtml.split('\n');
-  var collapsed = lines.length > 12;
-  if (collapsed) {
-    var shortHtml = lines.slice(0, 10).join('\n');
-    var fullId = 'summaryFull_' + _summaryIndex;
-    el.innerHTML = '<div class="summary-block">'
-      + hdr
-      + '<div id="' + fullId + '_short" style="font-size:.85rem;line-height:1.7;max-height:18em;overflow:hidden">' + shortHtml + '</div>'
-      + '<div id="' + fullId + '_full" style="display:none;font-size:.85rem;line-height:1.7">' + summaryHtml + '</div>'
-      + '<button class="btn btn-sm btn-outline" onclick="toggleSummaryExpand(this,\'' + fullId + '\')" style="font-size:.7rem;margin-top:4px">... Читать дальше</button>'
-      + '</div>';
-  } else {
-    el.innerHTML = '<div class="summary-block">'
-      + hdr
-      + '<div style="font-size:.85rem;line-height:1.7">' + summaryHtml + '</div>'
-      + '</div>';
-  }
+  // Collapse: show first ~10 lines via max-height, expand on click
+  var fullId = 'summaryFull_' + _summaryIndex;
+  el.innerHTML = '<div class="summary-block">'
+    + hdr
+    + '<div id="' + fullId + '" style="font-size:.85rem;line-height:1.7;max-height:18em;overflow:hidden">' + summaryHtml + '</div>'
+    + '<button id="' + fullId + '_btn" class="btn btn-sm btn-outline" onclick="toggleSummaryExpand(this,\'' + fullId + '\')" style="font-size:.7rem;margin-top:4px;display:none">... Читать дальше</button>'
+    + '</div>';
+  // Show expand button only if content overflows
+  setTimeout(function() {
+    var div = document.getElementById(fullId);
+    if (div && div.scrollHeight > div.clientHeight + 5) {
+      document.getElementById(fullId + '_btn').style.display = 'inline-block';
+    }
+  }, 100);
 
   // Carousel bar
   if (_summaryItems.length > 1) {
@@ -557,15 +553,13 @@ function loadRec(id, refresh) {
 }
 
 function toggleSummaryExpand(btn, fullId) {
-  var sEl = document.getElementById(fullId + '_short');
-  var fEl = document.getElementById(fullId + '_full');
-  if (sEl.style.display === 'none') {
-    sEl.style.display = 'block';
-    fEl.style.display = 'none';
+  var div = document.getElementById(fullId);
+  if (div.style.maxHeight === 'none') {
+    div.style.maxHeight = '18em';
     btn.textContent = '... Читать дальше';
   } else {
-    sEl.style.display = 'none';
-    fEl.style.display = 'block';
+    div.style.maxHeight = 'none';
+    div.style.overflow = 'visible';
     btn.textContent = '... Свернуть';
   }
 }
