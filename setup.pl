@@ -34,7 +34,7 @@ my $REGISTRY    = $ENV{DOCKER_REGISTRY} || 'docker.io/pltec/ptloganalyzer';
 
 my %comp = map { $_ => 0 } qw(infra collector app ai web ollama);
 my %db   = (host=>'', port=>5432, name=>'ptloganalyzer', user=>'ptlog', pass=>'', local=>1);
-my %coll = (port=>514, bind=>'0.0.0.0', udp=>1, tcp=>1, batch_size=>500, batch_interval=>'1.0');
+my %coll = (port=>514, bind=>'0.0.0.0', udp=>1, tcp=>1, batch_size=>500, batch_interval=>1.0);
 my %ai   = (enabled=>0, provider=>'ollama',
   openai_url=>'https://api.openai.com/v1', openai_key=>'', openai_model=>'gpt-4o-mini', openai_embed=>'text-embedding-3-small',
   ollama_url=>'http://ollama.ptlog:11434', ollama_model=>'llama3.2:1b', ollama_embed=>'nomic-embed-text',

@@ -44,8 +44,8 @@ class Config:
         self.collector_port: int = c.get("port", 514)
         self.collector_bind: str = c.get("bind", "0.0.0.0")
         self.collector_recv_buffer: int = c.get("recv_buffer", 65536)
-        self.collector_batch_size: int = c.get("batch_size", 500)
-        self.collector_batch_interval: float = c.get("batch_interval", 1.0)
+        self.collector_batch_size: int = int(c.get("batch_size", 500))
+        self.collector_batch_interval: float = float(c.get("batch_interval", 1.0))
 
         ai = raw.get("ai", {})
         self.ai_enabled: bool = ai.get("enabled", False)
