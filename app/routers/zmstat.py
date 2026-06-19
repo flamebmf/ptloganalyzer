@@ -109,13 +109,13 @@ async def get_app_stats(
     # Choose aggregation metric
     if metric == "sentbyte":
         agg = f"COALESCE(SUM((fields->>'sentbyte')::bigint), 0)"
-        order = "sentbyte DESC"
+        order = "value DESC"
     elif metric == "rcvdbyte":
         agg = f"COALESCE(SUM((fields->>'rcvdbyte')::bigint), 0)"
-        order = "rcvdbyte DESC"
+        order = "value DESC"
     elif metric == "duration":
         agg = f"COALESCE(SUM((fields->>'duration')::bigint), 0)"
-        order = "duration DESC"
+        order = "value DESC"
     else:
         agg = "COUNT(*)"
         order = "sessions DESC"
