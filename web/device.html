@@ -418,7 +418,7 @@ function renderSummaryItem() {
       + hdr
       + '<div id="' + fullId + '_short" style="font-size:.85rem;line-height:1.7;max-height:18em;overflow:hidden">' + shortHtml + '</div>'
       + '<div id="' + fullId + '_full" style="display:none;font-size:.85rem;line-height:1.7">' + summaryHtml + '</div>'
-      + '<button class="btn btn-sm btn-outline" onclick="var s=document.getElementById(\'' + fullId + '_short\');var f=document.getElementById(\'' + fullId + '_full\');var t=this;s.style.display=(s.style.display===\'none\'?\'block\':\'none\');f.style.display=(f.style.display===\'none\'?\'block\':\'none\');t.textContent=(s.style.display==\'none\'?\'... Свернуть\':\'... Читать дальше\')" style="font-size:.7rem;margin-top:4px">... Читать дальше</button>'
+      + '<button class="btn btn-sm btn-outline" onclick="toggleSummaryExpand(this,\'' + fullId + '\')" style="font-size:.7rem;margin-top:4px">... Читать дальше</button>'
       + '</div>';
   } else {
     el.innerHTML = '<div class="summary-block">'
@@ -498,38 +498,19 @@ async function loadZmstat() {
       document.getElementById(canvasId).innerHTML = '<div class="empty-state" style="padding:20px"><p>No numeric fields</p></div>';
       return;
     }
-    var colors = ['#00d4ff','#ff5252','#ffd740','#00e676','#7c4dff','#ff6d00','#00bcd4','#e040fb'];
-    var datasets = numericFields.map(function(f, idx) {
+    var datasets = numericFields.map(function(f) {
       return {
         label: f,
-        data: items.map(function(d) { return {x: new Date(d.ts), y: d.fields[f]}; }),
-        borderColor: colors[idx % colors.length],
-        backgroundColor: 'transparent',
-        borderWidth: 1.5,
-        pointRadius: 0,
-        fill: false,
-        tension: 0.1,
-        spanGaps: true,
+        data: items.map(function(d) { return {x: new Date(d.ts).getTime(), y: d.fields[f]}; })
       };
     });
-    _appMetricCharts[appId] = new Chart(document.getElementById(canvasId), {
-      type: 'line',
-      data: { datasets: datasets },
-      options: {
-        responsive: true, maintainAspectRatio: false, animation: false,
-        interaction: { mode: 'nearest', intersect: false },
-        plugins: { legend: { display: true, labels: { boxWidth: 10, font: { size: 10 }, color: '#aaa' } } },
-        scales: {
-          x: { type: 'time', time: { unit: 'hour' }, grid: { color: 'rgba(255,255,255,.04)' }, ticks: { color: '#777', font: { size: 9 } } },
-          y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,.04)' }, ticks: { color: '#777', font: { size: 9 } } },
-        },
-      },
-    });
+    _appMetricCharts[appId] = createApexLineChart(canvasId, datasets);
   } catch(err) { showToast('Error: '+err, 'error'); }
 }
 
 function escJs(s) {
-  return s.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+  if (!s) return '';
+  return s.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\n/g,'\\n').replace(/\r/g,'').replace(/"/g,'&quot;');
 }
 
 function openRec(id, title, deviceId) {
@@ -567,6 +548,20 @@ function loadRec(id, refresh) {
   }).catch(function(err) {
     body.innerHTML = '<span style="color:#ff5252">Ошибка: ' + err + '</span>';
   });
+}
+
+function toggleSummaryExpand(btn, fullId) {
+  var sEl = document.getElementById(fullId + '_short');
+  var fEl = document.getElementById(fullId + '_full');
+  if (sEl.style.display === 'none') {
+    sEl.style.display = 'block';
+    fEl.style.display = 'none';
+    btn.textContent = '... Читать дальше';
+  } else {
+    sEl.style.display = 'none';
+    fEl.style.display = 'block';
+    btn.textContent = '... Свернуть';
+  }
 }
 
 window.pageLoaded = loadDevice;

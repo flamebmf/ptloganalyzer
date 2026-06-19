@@ -216,6 +216,79 @@ function createAnomalyTrendChart(elId, data, forecast) {
   return chart;
 }
 
+function createLogVolumeChart(elId, data) {
+  var options = {
+    ...ptChartTheme,
+    chart: { type: 'area', height: 225, toolbar: { show: false },
+             background: 'transparent', foreColor: '#7a8294',
+             fontFamily: 'Roboto' },
+    series: [{ name: 'Volume', data: data.map(d => ({ x: d.hour, y: d.count })) }],
+    stroke: { curve: 'smooth', width: 2 },
+    colors: ['#00d4ff'],
+    fill: {
+      type: 'gradient',
+      gradient: { shadeIntensity: 1, opacityFrom: 0.3, opacityTo: 0 }
+    },
+    dataLabels: { enabled: false },
+    markers: { size: 0 },
+    xaxis: {
+      type: 'datetime',
+      labels: {
+        datetimeUTC: false,
+        format: 'dd.MM HH:00',
+        style: { colors: '#7a8294', fontSize: '10px', fontFamily: 'Roboto' }
+      },
+      axisBorder: { show: false },
+      axisTicks: { show: false }
+    }
+  };
+  const chart = new ApexCharts(document.getElementById(elId), options);
+  chart.render();
+  return chart;
+}
+
+function createApexLineChart(elId, datasets) {
+  var series = datasets.map(function(ds) {
+    return { name: ds.label, data: ds.data.map(function(p) { return { x: p.x, y: p.y }; }) };
+  });
+  var colors = ['#00d4ff','#ff5252','#ffd740','#00e676','#7c4dff','#ff6d00','#00bcd4','#e040fb'];
+  var options = {
+    ...ptChartTheme,
+    chart: { type: 'line', height: 160, toolbar: { show: false },
+             background: 'transparent', foreColor: '#7a8294',
+             fontFamily: 'Roboto', animations: { enabled: false } },
+    series: series,
+    stroke: { curve: 'straight', width: 1.5 },
+    colors: colors.slice(0, datasets.length),
+    dataLabels: { enabled: false },
+    markers: { size: 0 },
+    grid: { ...ptChartTheme.grid, yaxis: { lines: { show: true } } },
+    xaxis: {
+      type: 'datetime',
+      labels: {
+        datetimeUTC: false,
+        format: 'HH:00',
+        style: { colors: '#7a8294', fontSize: '9px', fontFamily: 'Roboto' }
+      },
+      axisBorder: { show: false },
+      axisTicks: { show: false }
+    },
+    yaxis: {
+      labels: { style: { colors: '#7a8294', fontSize: '9px', fontFamily: 'Roboto' } }
+    },
+    legend: {
+      show: true,
+      labels: { colors: '#aaa' },
+      fontSize: '10px',
+      itemMargin: { horizontal: 8 }
+    }
+  };
+  const chartEl = document.getElementById(elId);
+  const chart = new ApexCharts(chartEl, options);
+  chart.render();
+  return chart;
+}
+
 function createSeverityChart(elId, data) {
   const colors = ['#ff1744','#ff5252','#d50000','#ff9100','#ffd740','#00e676','#00d4ff','#7a8294'];
   const labels = ['Emerg','Alert','Crit','Error','Warning','Notice','Info','Debug'];
