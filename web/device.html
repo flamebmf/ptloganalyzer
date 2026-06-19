@@ -71,7 +71,7 @@
 
 <div class="chart-card" style="margin-top:14px" id="zmstatCard" hidden>
   <div class="card-header">
-    <div class="card-title"><i class="bi bi-graph-up"></i> Приложения <span id="zmstatBadge" class="badge badge-info" style="font-size:.65rem">—</span></div>
+    <div class="card-title"><i class="bi bi-graph-up"></i> App metrics</div>
     <div style="display:flex;gap:6px">
       <select id="zmstatMetric" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:6px 10px;color:var(--pt-text);font-family:inherit;font-size:.75rem;outline:none" onchange="loadZmstat()">
         <option value="">— выберите —</option>
@@ -473,7 +473,6 @@ async function initZmstat() {
     }
     card.hidden = false;
     var sel = document.getElementById('zmstatMetric');
-    document.getElementById('zmstatBadge').textContent = apps.length + ' apps';
     sel.innerHTML = '<option value="">— выберите —</option>'
       + apps.map(function(a) { return '<option value="' + a + '">' + a + '</option>'; }).join('');
     sel.value = apps[0];

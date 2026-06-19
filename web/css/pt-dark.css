@@ -81,6 +81,10 @@ body {
   background:rgba(10,15,22,.9); border:1px solid rgba(255,255,255,.06);
   backdrop-filter:blur(10px); border-radius:16px; padding:14px; min-height:0;
 }
+.chart-card .card-header {
+  display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;
+}
+.chart-card .card-title { font-size:.82rem; font-weight:700; color:var(--pt-text) }
 .chart-card.full { width:100% }
 .chart-card.half  { flex:1; min-width:280px }
 .chart-card.third { flex:1; min-width:200px }
