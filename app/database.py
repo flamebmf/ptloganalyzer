@@ -312,20 +312,15 @@ class Database:
             """)
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS app_metrics (
-                    id          BIGSERIAL,
+                    id          BIGSERIAL PRIMARY KEY,
                     device_id   INT NOT NULL REFERENCES devices(id),
                     app_id      VARCHAR(100) NOT NULL,
                     ts          TIMESTAMPTZ NOT NULL,
-                    fields      JSONB NOT NULL DEFAULT '{}',
-                    PRIMARY KEY (id, ts)
-                ) PARTITION BY RANGE (ts)
+                    fields      JSONB NOT NULL DEFAULT '{}'
+                )
             """)
             await conn.execute("""
-                CREATE TABLE IF NOT EXISTS app_metrics_default
-                PARTITION OF app_metrics DEFAULT
-            """)
-            await conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_app_metrics_ts
+                CREATE INDEX IF NOT EXISTS idx_app_metrics_lookup
                 ON app_metrics(device_id, app_id, ts DESC)
             """)
 

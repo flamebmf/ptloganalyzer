@@ -1,7 +1,10 @@
 # Copyright (c) 2026 PlurumTech.com
 # SPDX-License-Identifier: LicenseRef-Personal-Use-Only
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, HTTPException
 from pydantic import BaseModel
+import structlog
+
+log = structlog.get_logger()
 
 from app.main import db
 from app.collector.app_parsers import APP_PARSERS
