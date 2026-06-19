@@ -1,0 +1,153 @@
+<!-- Copyright (c) 2026 PlurumTech.com -->
+<!-- SPDX-License-Identifier: LicenseRef-Personal-Use-Only -->
+<div class="header-block">
+  <h1>FortiGate Traffic</h1>
+  <div class="header-stats" id="fgStats"></div>
+</div>
+
+<div class="chart-card">
+  <div class="card-header">
+    <div class="card-title"><i class="bi bi-arrow-left-right"></i> Top Source IPs</div>
+    <button class="btn btn-outline btn-sm" onclick="loadFgStat('srcip','sentbyte')"><i class="bi bi-arrow-clockwise"></i></button>
+  </div>
+  <div id="fgSrcIpChart" style="height:200px"></div>
+</div>
+
+<div class="chart-row" style="margin-top:14px">
+  <div class="chart-card half">
+    <div class="card-header"><div class="card-title">Destination IPs</div></div>
+    <div id="fgDstIpChart" style="height:200px"></div>
+  </div>
+  <div class="chart-card half">
+    <div class="card-header"><div class="card-title">Top Apps</div></div>
+    <div id="fgAppChart" style="height:200px"></div>
+  </div>
+</div>
+
+<div class="chart-row" style="margin-top:14px">
+  <div class="chart-card half">
+    <div class="card-header"><div class="card-title">Interfaces</div></div>
+    <div id="fgIntfChart" style="height:200px"></div>
+  </div>
+  <div class="chart-card half">
+    <div class="card-header"><div class="card-title">Actions / Threats</div></div>
+    <div id="fgActionChart" style="height:200px"></div>
+  </div>
+</div>
+
+<div class="chart-row" style="margin-top:14px">
+  <div class="chart-card full">
+    <div class="card-header">
+      <div class="card-title">Policy Usage</div>
+      <button class="btn btn-outline btn-sm" onclick="loadFgPolicy()"><i class="bi bi-arrow-clockwise"></i></button>
+    </div>
+    <div id="fgPolicyList" style="font-size:.8rem;max-height:200px;overflow-y:auto"></div>
+  </div>
+</div>
+
+<script>
+var fgDeviceId = null;
+var _fgCharts = {};
+
+async function loadFortigate() {
+  var main = document.getElementById('mainContent');
+  var pageUrl = main ? main.dataset.page : window.location.hash.replace(/^#/, '');
+  var qs = pageUrl && pageUrl.includes('?') ? pageUrl.split('?')[1] : location.search.substring(1);
+  var params = new URLSearchParams(qs);
+  fgDeviceId = parseInt(params.get('id'));
+  if (!fgDeviceId) return;
+
+  try {
+    var dev = await apiGet('/api/devices/' + fgDeviceId);
+    document.querySelector('#fgStats').innerHTML = '<span class="stat-badge">Device <span class="stat-val">' + (dev.name || dev.hostname) + '</span></span>';
+
+    loadFgStat('srcip', 'sentbyte');
+    loadFgStat('dstip', 'sentbyte');
+    loadFgStat('app', 'sentbyte');
+    loadFgStat('srcintf', 'sentbyte');
+    loadFgStat('action', null);
+    loadFgPolicy();
+  } catch(err) { showToast('Error: '+err, 'error'); }
+}
+
+async function loadFgStat(dim, metric) {
+  if (!fgDeviceId) return;
+  var url = '/api/app-metrics/stats?device_id=' + fgDeviceId + '&app_id=fortigate&dim=' + dim + '&hours=24&limit=10';
+  if (metric) url += '&metric=' + metric;
+  try {
+    var data = await apiGet(url);
+    var items = data.items || [];
+    var elId = 'fg' + dim.charAt(0).toUpperCase() + dim.slice(1).replace(/[^a-zA-Z]/g,'') + 'Chart';
+    var el = document.getElementById(elId);
+    if (!el) return;
+
+    if (items.length === 0) {
+      el.innerHTML = '<div class="empty-state" style="padding:20px"><p>No data</p></div>';
+      return;
+    }
+
+    var labels = items.map(function(r) { return String(r.label || '').substring(0, 30); });
+    var values = items.map(function(r) { return r.value || r.sessions; });
+    var isBytes = metric === 'sentbyte' || metric === 'rcvdbyte';
+
+    if (_fgCharts[elId]) _fgCharts[elId].destroy();
+    _fgCharts[elId] = new ApexCharts(el, {
+      ...ptChartTheme,
+      chart: { type: 'bar', height: 200, toolbar: { show: false },
+               background: 'transparent', foreColor: '#7a8294', fontFamily: 'Roboto' },
+      series: [{ name: isBytes ? 'Bytes' : 'Count', data: values }],
+      colors: ['#00d4ff'],
+      plotOptions: { bar: { horizontal: true, borderRadius: 3, barHeight: '70%' } },
+      dataLabels: { enabled: false },
+      xaxis: {
+        categories: labels,
+        labels: { style: { colors: '#7a8294', fontSize: '10px' } }
+      },
+      yaxis: {
+        labels: { style: { colors: '#e4e8ee', fontSize: '11px' },
+                  maxWidth: 200 }
+      },
+      legend: { show: false },
+      tooltip: {
+        theme: 'dark',
+        y: { formatter: function(v) { return isBytes ? formatBytes(v) : v.toLocaleString(); } }
+      }
+    });
+    _fgCharts[elId].render();
+  } catch(err) { showToast('Error: '+err, 'error'); }
+}
+
+function formatBytes(b) {
+  if (!b) return '0 B';
+  var u = ['B','KB','MB','GB','TB'], i = 0;
+  while (b >= 1024 && i < u.length-1) { b /= 1024; i++; }
+  return b.toFixed(i>0?1:0) + ' ' + u[i];
+}
+
+async function loadFgPolicy() {
+  if (!fgDeviceId) return;
+  try {
+    var data = await apiGet('/api/app-metrics/stats?device_id=' + fgDeviceId + '&app_id=fortigate&dim=policyname&hours=24&limit=20');
+    var items = data.items || [];
+    var el = document.getElementById('fgPolicyList');
+    if (items.length === 0) {
+      el.innerHTML = '<div class="empty-state" style="padding:12px"><p>No policy data</p></div>';
+      return;
+    }
+    var maxSessions = Math.max.apply(null, items.map(function(r) { return r.sessions; }));
+    el.innerHTML = items.map(function(r) {
+      var pct = maxSessions > 0 ? Math.round(r.sessions / maxSessions * 100) : 0;
+      return '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.03)">'
+        + '<span style="flex:1;font-size:.8rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (r.label || '—') + '</span>'
+        + '<span style="font-size:.75rem;color:var(--pt-muted);min-width:60px;text-align:right">' + r.sessions + ' sessions</span>'
+        + '<div style="width:80px;height:6px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden">'
+        + '<div style="width:' + pct + '%;height:100%;background:var(--pt-accent);border-radius:3px"></div>'
+        + '</div>'
+        + '</div>';
+    }).join('');
+  } catch(err) {}
+}
+
+window.pageLoaded = loadFortigate;
+loadFortigate();
+</script>
