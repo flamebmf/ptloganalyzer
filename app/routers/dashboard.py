@@ -52,16 +52,23 @@ async def dashboard_history():
         cutoff_day,
     )
     top_errors_q = q(
-        "SELECT COALESCE(d.name, d.hostname, host(d.ip)) AS hostname, SUM(s.count)::int AS errors "
-        "FROM log_stats_hourly s JOIN devices d ON d.id = s.device_id "
-        "WHERE s.hour > $1 AND s.severity <= 3 "
-        "GROUP BY d.id, d.hostname, d.name, d.ip ORDER BY errors DESC LIMIT 5",
+        "SELECT COALESCE(d.name, d.hostname, host(d.ip)) AS hostname, t.cnt::int AS errors "
+        "FROM ("
+        "  SELECT device_id, SUM(count) AS cnt "
+        "  FROM log_stats_hourly WHERE hour > $1 AND severity <= 3 "
+        "  GROUP BY device_id ORDER BY cnt DESC LIMIT 5"
+        ") t JOIN devices d ON d.id = t.device_id "
+        "ORDER BY errors DESC",
         cutoff_day,
     )
     per_device_q = q(
-        "SELECT COALESCE(d.name, d.hostname, host(d.ip)) AS hostname, SUM(s.count)::int AS count "
-        "FROM log_stats_hourly s JOIN devices d ON d.id = s.device_id "
-        "WHERE s.hour > $1 GROUP BY d.id, d.hostname, d.name, d.ip ORDER BY count DESC",
+        "SELECT COALESCE(d.name, d.hostname, host(d.ip)) AS hostname, t.cnt::int AS count "
+        "FROM ("
+        "  SELECT device_id, SUM(count) AS cnt "
+        "  FROM log_stats_hourly WHERE hour > $1 "
+        "  GROUP BY device_id"
+        ") t JOIN devices d ON d.id = t.device_id "
+        "ORDER BY count DESC",
         cutoff_day,
     )
     week_q = q(
