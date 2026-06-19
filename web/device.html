@@ -484,6 +484,11 @@ async function loadZmstat() {
   if (!deviceId) return;
   var appId = document.getElementById('zmstatMetric').value;
   if (!appId) return;
+  // Destroy all previous charts
+  Object.keys(_appMetricCharts).forEach(function(k) {
+    if (_appMetricCharts[k]) { _appMetricCharts[k].destroy(); delete _appMetricCharts[k]; }
+  });
+  document.getElementById('zmstatContent').innerHTML = '';
   if (appId === 'fortigate') {
     loadFgTraffic();
     return;
@@ -491,18 +496,11 @@ async function loadZmstat() {
   try {
     var data = await apiGet('/api/app-metrics/series?device_id=' + deviceId + '&app_id=' + appId + '&hours=24');
     var items = data.items || [];
-    if (_appMetricCharts['main']) { _appMetricCharts['main'].destroy(); delete _appMetricCharts['main']; }
     var container = document.getElementById('zmstatContent');
-    if (items.length === 0) {
-      container.innerHTML = '<div class="empty-state" style="padding:20px"><p>No data</p></div>';
-      return;
-    }
+    if (items.length === 0) { container.innerHTML = '<div class="empty-state" style="padding:20px"><p>No data</p></div>'; return; }
     var fieldNames = Object.keys(items[0].fields || {}).filter(function(f) { return f !== '_metric'; });
     var numericFields = fieldNames.filter(function(f) { return typeof items[0].fields[f] === 'number'; });
-    if (numericFields.length === 0) {
-      container.innerHTML = '<div class="empty-state" style="padding:20px"><p>No numeric fields</p></div>';
-      return;
-    }
+    if (numericFields.length === 0) { container.innerHTML = '<div class="empty-state" style="padding:20px"><p>No numeric fields</p></div>'; return; }
     container.innerHTML = '<div id="zmstatLineChart" style="height:160px"></div>';
     var datasets = numericFields.map(function(f) {
       return { label: f, data: items.map(function(d) { return {x: new Date(d.ts).getTime(), y: d.fields[f]}; }) };
@@ -513,10 +511,6 @@ async function loadZmstat() {
 
 async function loadFgTraffic() {
   try {
-    // Destroy previous charts
-    Object.keys(_appMetricCharts).forEach(function(k) {
-      if (_appMetricCharts[k]) { _appMetricCharts[k].destroy(); delete _appMetricCharts[k]; }
-    });
     var container = document.getElementById('zmstatContent');
     container.innerHTML = ''
       + '<div class="chart-row" style="margin-bottom:10px">'

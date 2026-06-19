@@ -96,7 +96,7 @@ async def get_app_stats(
     if dim not in valid:
         raise HTTPException(400, f"Invalid dim: {dim}. Valid: {', '.join(sorted(valid))}")
 
-    where_dim = f"fields ? '{dim}'"
+    where_dim = f"jsonb_exists(fields, '{dim}')"
     # Choose aggregation metric
     if metric == "sentbyte":
         agg = f"COALESCE(SUM((fields->>'sentbyte')::bigint), 0)"
