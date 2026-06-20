@@ -7,8 +7,6 @@ metadata:
   labels:
     app: ptlog
     component: infra
-  annotations:
-    io.podman.annotations.shm-size: "1G"
 spec:
   restartPolicy: Always
   containers:
@@ -51,6 +49,8 @@ spec:
     - -c
     - effective_io_concurrency=200
     volumeMounts:
+    - name: dshm
+      mountPath: /dev/shm
     - name: pgdata
       mountPath: /var/lib/postgresql/data
     - name: initdb
@@ -80,6 +80,10 @@ spec:
       periodSeconds: 10
       timeoutSeconds: 5
   volumes:
+  - name: dshm
+    emptyDir:
+      medium: Memory
+      sizeLimit: 1Gi
   - name: pgdata
     hostPath:
       path: __DATA_DIR__/data/pgdata
