@@ -190,7 +190,9 @@ class Database:
                 log.info("hourly_stats_backfilled")
 
     async def _ensure_indexes(self):
-        async with self.pool.acquire() as conn:
+        conn = await self.pool.acquire()
+        try:
+            await conn.execute("SET statement_timeout = '300s'")
             # Remove duplicate IPs with cascade, keep lowest id
             dups = await conn.fetch(
                 "SELECT a.id FROM devices a JOIN devices b ON a.ip = b.ip WHERE a.id > b.id AND a.ip IS NOT NULL"
@@ -336,6 +338,9 @@ class Database:
                     updated_at  TIMESTAMPTZ DEFAULT NOW()
                 )
             """)
+        finally:
+            await conn.execute("SET statement_timeout = '30s'")
+            await self.pool.release(conn)
 
     async def _seed_templates(self):
         builtins = [
