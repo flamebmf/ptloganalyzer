@@ -41,9 +41,9 @@ class Scheduler:
         # Check DB config FIRST, before any scheduled tasks
         await self._check_config()
 
-        # Check for runtime config changes every 5 minutes
+        # Check for runtime config changes every 30 seconds
         asyncio.create_task(self._loop("config_check",
-                            300,
+                            30,
                             self._check_config))
 
         # Schedule periodic tasks FIRST — они должны работать всегда,
