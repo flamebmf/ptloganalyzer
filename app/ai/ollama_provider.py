@@ -36,6 +36,9 @@ class OllamaProvider(AIProvider):
         except httpx.ReadTimeout:
             raise TimeoutError(f"ReadTimeout after {self._timeout}s")
         if resp.status_code == 404:
+            err_body = resp.json() if resp.text else {}
+            if "error" in err_body and "not found" in str(err_body.get("error", "")):
+                resp.raise_for_status()  # model not installed, bubble with clear error
             # Fallback to /api/generate for older Ollama versions
             system = next((m["content"] for m in messages if m["role"] == "system"), "")
             user = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
