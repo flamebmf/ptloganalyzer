@@ -7,6 +7,8 @@ metadata:
   labels:
     app: ptlog
     component: infra
+  annotations:
+    io.podman.annotations.shm-size: "1G"
 spec:
   restartPolicy: Always
   containers:
