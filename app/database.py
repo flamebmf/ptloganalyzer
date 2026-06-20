@@ -369,7 +369,7 @@ class Database:
                 )
             """)
         finally:
-            await conn.execute("SET statement_timeout = '30s'")
+            await conn.execute("RESET statement_timeout")
             await self.pool.release(conn)
 
     async def _seed_templates(self):
