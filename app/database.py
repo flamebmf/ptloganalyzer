@@ -283,6 +283,10 @@ class Database:
                 "CREATE INDEX IF NOT EXISTS idx_stats_hour_brin "
                 "ON log_stats_hourly USING BRIN (hour) WITH (pages_per_range = 32)"
             )
+            await conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_stats_hour_app "
+                "ON log_stats_hourly(app_name)"
+            )
             await conn.execute("ANALYZE log_stats_hourly")
 
             # ── Parse templates ──

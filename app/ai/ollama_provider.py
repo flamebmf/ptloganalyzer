@@ -23,20 +23,29 @@ class OllamaProvider(AIProvider):
         return self._dims
 
     async def chat(self, messages: list[dict], **kwargs) -> str:
+        payload = {
+            "model": kwargs.get("model", self.chat_model),
+            "messages": messages,
+            "stream": False,
+            **{k: v for k, v in kwargs.items() if k != "model"},
+        }
         try:
             resp = await self._client.post(
-                f"{self.base_url}/api/chat",
-                json={
-                    "model": kwargs.get("model", self.chat_model),
-                    "messages": messages,
-                    "stream": False,
-                    **{k: v for k, v in kwargs.items() if k != "model"},
-                },
+                f"{self.base_url}/api/chat", json=payload
             )
         except httpx.ReadTimeout:
             raise TimeoutError(f"ReadTimeout after {self._timeout}s")
+        if resp.status_code == 404:
+            # Fallback to /api/generate for older Ollama versions
+            system = next((m["content"] for m in messages if m["role"] == "system"), "")
+            user = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
+            gen_payload = {"model": payload["model"], "prompt": user, "stream": False}
+            if system:
+                gen_payload["system"] = system
+            resp = await self._client.post(f"{self.base_url}/api/generate", json=gen_payload)
         resp.raise_for_status()
-        return resp.json()["message"]["content"]
+        data = resp.json()
+        return data.get("message", {}).get("content") or data.get("response", "")
 
     async def embed(self, text: str) -> list[float]:
         resp = await self._client.post(
