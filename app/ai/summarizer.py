@@ -66,7 +66,7 @@ class Summarizer:
             ])
             await self.db.insert_summary(
                 device_id, period_start, period_end, summary,
-                model=f"{self.cfg.ai_provider}/{self.provider.chat_model}",
+                model=f"{getattr(self.cfg, 'summarization_provider', self.cfg.ai_provider)}/{self.provider.chat_model}",
                 summary_type="period",
             )
             log.info("summary_created", device_id=device_id, device_name=device_name,
@@ -92,7 +92,7 @@ class Summarizer:
             daily_text = await self._summarize_daily(summaries)
             await self.db.insert_summary(
                 device_id, yesterday, now, daily_text,
-                model=f"{self.cfg.ai_provider}/{self.provider.chat_model}",
+                model=f"{getattr(self.cfg, 'summarization_provider', self.cfg.ai_provider)}/{self.provider.chat_model}",
                 summary_type="daily",
             )
             log.info("daily_summary_created", device_id=device_id, device_name=device_name,
