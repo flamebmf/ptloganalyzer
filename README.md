@@ -1,6 +1,6 @@
 # ptloganalyzer
 
-> **Version 0.9.7** — Self-hosted syslog analysis platform with AI-powered summarization, anomaly detection, and application-level metric extraction.
+> **Version 0.9.8** — Self-hosted syslog analysis platform with AI-powered summarization, anomaly detection, and application-level metric extraction.
 
 Collect syslogs from network devices (routers, switches, firewalls, access points), parse them with device-specific templates and application parsers (FortiGate, Postfix, Zimbra), and get structured AI analysis in Russian or English — hourly summaries, daily reports, real-time anomaly alerts, and per-app KPIs.
 
