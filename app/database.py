@@ -195,6 +195,10 @@ class Database:
     async def _ensure_indexes(self):
         conn = await self.pool.acquire()
         try:
+            got_lock = await conn.fetchval("SELECT pg_try_advisory_lock(987654321)")
+            if not got_lock:
+                log.info("_ensure_indexes_skipped")
+                return
             await conn.execute("SET statement_timeout = '300s'", timeout=300)
             # Remove duplicate IPs with cascade, keep lowest id
             dups = await conn.fetch(
@@ -370,6 +374,7 @@ class Database:
             """)
         finally:
             await conn.execute("RESET statement_timeout")
+            await conn.execute("SELECT pg_advisory_unlock_all()")
             await self.pool.release(conn)
 
     async def _seed_templates(self):
