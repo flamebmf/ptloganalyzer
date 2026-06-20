@@ -6,6 +6,18 @@
     <div class="stat-badge"><span>Всего</span> <span class="stat-val" id="totalDevices">0</span></div>
     <div class="stat-badge"><span>Активны</span> <span class="stat-val" id="activeDevices">0</span></div>
   </div>
+  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding-bottom:14px;border-bottom:1px solid rgba(255,255,255,.06)">
+    <div style="position:relative;flex:1;min-width:180px;max-width:320px">
+      <i class="bi bi-search" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--pt-muted);font-size:.75rem"></i>
+      <input id="deviceSearch" type="text" placeholder="Поиск по имени, hostname, IP" style="width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:8px 10px 8px 28px;color:var(--pt-text);font-family:inherit;font-size:.8rem;outline:none" oninput="onDeviceSearch()">
+    </div>
+    <div id="deviceFilters" style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn btn-sm device-filter active" data-filter="" onclick="setFilter('')">All</button>
+      <button class="btn btn-sm device-filter" data-filter="online" onclick="setFilter('online')" title="Online (last 5 min)"><i class="bi bi-circle-fill" style="font-size:.5rem;color:var(--pt-success);margin-right:4px"></i>Online</button>
+      <button class="btn btn-sm device-filter" data-filter="anomalies" onclick="setFilter('anomalies')" title="Anomalies in last 2 hours"><i class="bi bi-exclamation-triangle" style="font-size:.65rem;color:#ff9100;margin-right:4px"></i>Anomalies</button>
+      <button class="btn btn-sm device-filter" data-filter="ai_report" onclick="setFilter('ai_report')" title="AI report in last 3 hours"><i class="bi bi-robot" style="font-size:.65rem;color:var(--pt-accent);margin-right:4px"></i>AI report</button>
+    </div>
+  </div>
 </div>
 
 <div class="device-grid" id="deviceGrid">
@@ -15,17 +27,82 @@
   </div>
 </div>
 
+<div id="devicePagination" style="display:flex;justify-content:center;align-items:center;gap:8px;margin-top:16px;font-size:.8rem"></div>
+
 <script>
 var _miniCharts = [];
+var _allDevices = [];
+var _searchQuery = '';
+var _filterMode = '';
+var _pageSize = 12;
+var _currentPage = 1;
+
+function onDeviceSearch() {
+  _searchQuery = document.getElementById('deviceSearch').value;
+  _currentPage = 1;
+  renderDevices();
+}
+
+function setFilter(mode) {
+  _filterMode = mode;
+  _currentPage = 1;
+  document.querySelectorAll('.device-filter').forEach(function(b) {
+    b.classList.toggle('active', b.getAttribute('data-filter') === mode);
+  });
+  renderDevices();
+}
+
+function getPageSize() {
+  // Responsive: 12 on wide, fewer on narrow
+  if (window.innerWidth >= 1400) return 12;
+  if (window.innerWidth >= 900) return 9;
+  if (window.innerWidth >= 600) return 6;
+  return 4;
+}
+
+function getFiltered() {
+  var list = _allDevices;
+  // Apply text search
+  if (_searchQuery) {
+    var q = _searchQuery.toLowerCase();
+    list = list.filter(function(d) {
+      return (d.name && d.name.toLowerCase().includes(q))
+          || (d.hostname && d.hostname.toLowerCase().includes(q))
+          || (d.ip && d.ip.includes(q));
+    });
+  }
+  // Apply filter mode
+  if (_filterMode === 'online') {
+    list = list.filter(function(d) { return d._stats && d._stats.online; });
+  } else if (_filterMode === 'anomalies') {
+    list = list.filter(function(d) { return d._stats && d._stats.anomalies_recent > 0; });
+    list.sort(function(a, b) {
+      var ta = a._stats && a._stats.last_anomaly_at ? new Date(a._stats.last_anomaly_at).getTime() : 0;
+      var tb = b._stats && b._stats.last_anomaly_at ? new Date(b._stats.last_anomaly_at).getTime() : 0;
+      return tb - ta;
+    });
+    return list;
+  } else if (_filterMode === 'ai_report') {
+    var cutoff = Date.now() - 3 * 60 * 60 * 1000; // 3 hours ago
+    list = list.filter(function(d) {
+      var ts = d._stats && d._stats.last_summary_at;
+      return ts && new Date(ts).getTime() > cutoff;
+    });
+    list.sort(function(a, b) {
+      var ta = a._stats && a._stats.last_summary_at ? new Date(a._stats.last_summary_at).getTime() : 0;
+      var tb = b._stats && b._stats.last_summary_at ? new Date(b._stats.last_summary_at).getTime() : 0;
+      return tb - ta;
+    });
+    return list;
+  }
+  return list;
+}
 
 async function loadDevices() {
   try {
     var devices = await apiGet('/api/devices');
     var bulk = await apiGet('/api/devices/bulk-data');
-    var grid = document.getElementById('deviceGrid');
     var active = 0;
-
-    // Augment and sort by last_summary_at desc
     for (var d of devices) {
       var s = (bulk.stats || {})[String(d.id)] || {};
       d._stats = s;
@@ -37,42 +114,85 @@ async function loadDevices() {
       var tb = b._sortTime ? new Date(b._sortTime).getTime() : 0;
       return tb - ta;
     });
-
-    var html = '';
-    for (var d of devices) {
-      var s = d._stats;
-      var lastSeen = s.last_seen ? formatTime(s.last_seen) : '-';
-      var lastSummary = s.last_summary_at ? formatTime(s.last_summary_at) : '-';
-      var status = s.online ? 'online' : 'offline';
-      var chartId = 'miniChart_' + d.id;
-      var cardTitle = d.name || d.hostname;
-      var cardSub = d.name ? d.hostname : '';
-      var ipLine = d.ip ? '<span style="color:var(--pt-muted);font-weight:400;font-size:.75rem">' + d.ip + '</span>' : '';
-      html += '<div class="card-dash" id="card_' + d.id + '" style="cursor:pointer">'
-        + '<div onclick="loadPage(\'device.html?id=' + d.id + '\')">'
-        + '<div class="card-header">'
-        + '<div class="card-title"><div>' + cardTitle + '</div>' + (ipLine ? '<div style="margin-top:2px">' + ipLine + '</div>' : '') + '</div>'
-        + '<span class="card-status ' + status + '" style="align-self:flex-start;flex-shrink:0;margin-left:8px"><i class="bi bi-circle-fill" style="font-size:.6rem"></i> ' + status + '</span>'
-        + '</div><div class="card-body">'
-        + (cardSub ? '<div><span style="color:var(--pt-muted)">' + cardSub + '</span></div>' : '')
-        + '<div class="card-stat"><span data-i18n="last_seen">Последний раз</span> <span class="card-lastseen">' + lastSeen + '</span></div>'
-        + '<div class="card-stat"><span>Logs / 24h</span> <span class="card-logvol stat-val">' + (s.total || 0) + '</span></div>'
-        + '<div class="card-stat"><span>AI отчёт</span> <span class="card-lastsummary" style="color:var(--pt-accent)">' + lastSummary + '</span></div>'
-        + '<div class="card-stat"><span data-i18n="anomalies">Аномалии</span> <span class="card-anomalies">' + (s.anomalies || 0) + '</span></div>'
-        + '</div></div>'
-        + '<div id="' + chartId + '" style="height:60px;margin:4px 10px 6px"></div>'
-        + '</div>';
-    }
-    if (devices.length === 0) {
-      html = '<div class="empty-state" style="grid-column:1/-1"><div class="icon"><i class="bi bi-hdd-stack"></i></div><p>Нет устройств. Добавьте через настройки.</p></div>';
-    }
-    grid.innerHTML = html;
+    _allDevices = devices;
     document.getElementById('totalDevices').textContent = devices.length;
     document.getElementById('activeDevices').textContent = active;
-    renderMiniCharts(devices, bulk.charts);
+    renderDevices();
   } catch(err) {
     showToast('Error loading devices: '+err, 'error');
   }
+}
+
+function renderDevices() {
+  var grid = document.getElementById('deviceGrid');
+  var filtered = getFiltered();
+  _pageSize = getPageSize();
+  var totalPages = Math.max(1, Math.ceil(filtered.length / _pageSize));
+  if (_currentPage > totalPages) _currentPage = totalPages;
+  var start = (_currentPage - 1) * _pageSize;
+  var page = filtered.slice(start, start + _pageSize);
+
+  if (page.length === 0) {
+    grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="icon"><i class="bi bi-search"></i></div><p>'
+      + (_searchQuery ? 'Ничего не найдено по запросу «' + _searchQuery + '»' : 'Нет устройств. Добавьте через настройки.')
+      + '</p></div>';
+    renderPagination(0);
+    return;
+  }
+
+  var html = '';
+  for (var d of page) {
+    var s = d._stats || {};
+    var lastSeen = s.last_seen ? formatTime(s.last_seen) : '-';
+    var lastSummary = s.last_summary_at ? formatTime(s.last_summary_at) : '-';
+    var status = s.online ? 'online' : 'offline';
+    var chartId = 'miniChart_' + d.id;
+    var cardTitle = d.name || d.hostname;
+    var cardSub = d.name ? d.hostname : '';
+    var ipLine = d.ip ? '<span style="color:var(--pt-muted);font-weight:400;font-size:.75rem">' + d.ip + '</span>' : '';
+    html += '<div class="card-dash" id="card_' + d.id + '" style="cursor:pointer">'
+      + '<div onclick="loadPage(\'device.html?id=' + d.id + '\')">'
+      + '<div class="card-header">'
+      + '<div class="card-title"><div>' + cardTitle + '</div>' + (ipLine ? '<div style="margin-top:2px">' + ipLine + '</div>' : '') + '</div>'
+      + '<span class="card-status ' + status + '" style="align-self:flex-start;flex-shrink:0;margin-left:8px"><i class="bi bi-circle-fill" style="font-size:.6rem"></i> ' + status + '</span>'
+      + '</div><div class="card-body">'
+      + (cardSub ? '<div><span style="color:var(--pt-muted)">' + cardSub + '</span></div>' : '')
+      + '<div class="card-stat"><span data-i18n="last_seen">Последний раз</span> <span class="card-lastseen">' + lastSeen + '</span></div>'
+      + '<div class="card-stat"><span>Logs / 24h</span> <span class="card-logvol stat-val">' + (s.total || 0) + '</span></div>'
+      + '<div class="card-stat"><span>AI отчёт</span> <span class="card-lastsummary" style="color:var(--pt-accent)">' + lastSummary + '</span></div>'
+      + '<div class="card-stat"><span data-i18n="anomalies">Аномалии</span> <span class="card-anomalies">' + (s.anomalies || 0) + '</span></div>'
+      + '</div></div>'
+      + '<div id="' + chartId + '" style="height:60px;margin:4px 10px 6px"></div>'
+      + '</div>';
+  }
+  grid.innerHTML = html;
+  renderPagination(totalPages);
+  if (_miniCharts.length) { _miniCharts.forEach(function(c) { c.destroy(); }); _miniCharts = []; }
+  // Lazy mini-charts for visible cards
+  setTimeout(function() { renderMiniCharts(page); }, 50);
+}
+
+function renderPagination(totalPages) {
+  var el = document.getElementById('devicePagination');
+  if (totalPages <= 1) { el.innerHTML = ''; return; }
+  var html = '';
+  if (_currentPage > 1) html += '<button class="btn btn-sm btn-outline" onclick="goToPage(' + (_currentPage - 1) + ')"><i class="bi bi-chevron-left"></i></button>';
+  for (var i = 1; i <= totalPages; i++) {
+    if (i === _currentPage) {
+      html += '<button class="btn btn-sm btn-primary" style="min-width:30px;font-weight:600" onclick="goToPage(' + i + ')">' + i + '</button>';
+    } else if (i === 1 || i === totalPages || Math.abs(i - _currentPage) <= 1) {
+      html += '<button class="btn btn-sm btn-outline" onclick="goToPage(' + i + ')" style="min-width:30px">' + i + '</button>';
+    } else if (i === _currentPage - 2 || i === _currentPage + 2) {
+      html += '<span style="color:var(--pt-muted);padding:0 2px">…</span>';
+    }
+  }
+  if (_currentPage < totalPages) html += '<button class="btn btn-sm btn-outline" onclick="goToPage(' + (_currentPage + 1) + ')"><i class="bi bi-chevron-right"></i></button>';
+  el.innerHTML = html;
+}
+
+function goToPage(n) {
+  _currentPage = n;
+  renderDevices();
 }
 
 function startAutoRefresh() {
@@ -84,57 +204,32 @@ async function refreshCards() {
   try {
     var devices = await apiGet('/api/devices');
     var bulk = await apiGet('/api/devices/bulk-data');
-    var grid = document.getElementById('deviceGrid');
-    if (!grid) return;
-
-    // Sort by last_summary_at (newest first)
+    var active = 0;
     for (var d of devices) {
       var s = (bulk.stats || {})[String(d.id)] || {};
+      d._stats = s;
       d._sortTime = s.last_summary_at || s.last_seen || null;
+      if (s.online) active++;
     }
     devices.sort(function(a, b) {
       var ta = a._sortTime ? new Date(a._sortTime).getTime() : 0;
       var tb = b._sortTime ? new Date(b._sortTime).getTime() : 0;
       return tb - ta;
     });
-
-    var active = 0;
-    // Reorder DOM to match sorted devices
-    var parent = grid;
-    for (var d of devices) {
-      var card = document.getElementById('card_' + d.id);
-      if (!card) continue;
-      parent.appendChild(card);  // move to end (appending in sorted order)
-
-      var s = (bulk.stats || {})[String(d.id)] || {};
-      var lastSeen = s.last_seen ? formatTime(s.last_seen) : '-';
-      var lastSummary = s.last_summary_at ? formatTime(s.last_summary_at) : '-';
-      if (s.online) active++;
-      card.querySelector('.card-status').className = 'card-status ' + (s.online ? 'online' : 'offline');
-      card.querySelector('.card-status').innerHTML = '<i class="bi bi-circle-fill" style="font-size:.6rem"></i> ' + (s.online ? 'online' : 'offline');
-      var ls = card.querySelector('.card-lastseen');
-      if (ls) ls.textContent = lastSeen;
-      var lsum = card.querySelector('.card-lastsummary');
-      if (lsum) lsum.textContent = lastSummary;
-      var lv = card.querySelector('.card-logvol');
-      if (lv) lv.textContent = s.total || 0;
-      var ae = card.querySelector('.card-anomalies');
-      if (ae) ae.textContent = s.anomalies || 0;
-    }
+    _allDevices = devices;
     document.getElementById('totalDevices').textContent = devices.length;
     document.getElementById('activeDevices').textContent = active;
-    renderMiniCharts(devices, bulk.charts);
+    renderDevices();
   } catch(e) {}
 }
 
-function renderMiniCharts(devices, chartData) {
-  var sevColors = ['#ff1744','#ff5252','#d50000','#ff9100','#ffd740','#00e676','#00d4ff','#7a8294'];
-  var sevLabels = ['Emerg','Alert','Crit','Err','Warning','Notice','Info','Debug'];
+function renderMiniCharts(page) {
   for (var _mc of _miniCharts) { _mc.destroy(); }
   _miniCharts = [];
-  if (!chartData) return;
-  devices.forEach(function(d) {
-    var h = chartData[String(d.id)];
+  var sevColors = ['#ff1744','#ff5252','#d50000','#ff9100','#ffd740','#00e676','#00d4ff','#7a8294'];
+  var sevLabels = ['Emerg','Alert','Crit','Err','Warning','Notice','Info','Debug'];
+  page.forEach(function(d) {
+    var h = d._stats;
     if (!h || !h.series) return;
     var el = document.getElementById('miniChart_' + d.id);
     if (!el) return;

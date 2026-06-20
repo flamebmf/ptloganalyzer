@@ -73,10 +73,10 @@
   <div class="card-header">
     <div class="card-title"><i class="bi bi-graph-up"></i> App metrics</div>
     <div style="display:flex;gap:6px">
-      <select id="zmstatMetric" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:6px 10px;color:var(--pt-text);font-family:inherit;font-size:.75rem;outline:none" onchange="loadZmstat()">
+      <select id="zmstatMetric" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:6px 10px;color:var(--pt-text);font-family:inherit;font-size:.75rem;outline:none" onchange="loadAppMetrics()">
         <option value="">— выберите —</option>
       </select>
-      <button class="btn btn-outline btn-sm" onclick="loadZmstat()"><i class="bi bi-arrow-clockwise"></i></button>
+      <button class="btn btn-outline btn-sm" onclick="loadAppMetrics()"><i class="bi bi-arrow-clockwise"></i></button>
     </div>
   </div>
   <div id="zmstatContent"></div>
@@ -162,7 +162,7 @@ async function loadDevice() {
     loadDeviceLogs();
     loadSummaries();
     loadDeviceAnomalies();
-    initZmstat();
+    initAppMetrics();
   } catch(err) { showToast('Error: '+err, 'error'); }
 }
 
@@ -461,38 +461,53 @@ function carouselGo(i) {
 
 var _appMetricCharts = {};
 
-async function initZmstat() {
+// App metric panel registry — populated from /api/app-manifest/<app_id> on-demand
+var APP_PANELS = {};
+var _panelLoading = {};
+
+async function loadPanelScript(appId) {
+  if (APP_PANELS[appId]) return;
+  if (_panelLoading[appId]) return;
+  _panelLoading[appId] = true;
+  try {
+    var resp = await fetch('/api/app-manifest/' + appId);
+    if (!resp.ok) return;
+    var manifest = await resp.json();
+    if (manifest.panels && manifest.panels.length) {
+      APP_PANELS[appId] = manifest.panels;
+    }
+  } catch(e) {}
+}
+
+async function initAppMetrics() {
   if (!deviceId) return;
   try {
     var data = await apiGet('/api/app-metrics/list?device_id=' + deviceId);
     var apps = data.apps || [];
     var card = document.getElementById('zmstatCard');
-    if (apps.length === 0) {
-      card.hidden = true;
-      return;
-    }
+    if (apps.length === 0) { card.hidden = true; return; }
     card.hidden = false;
     var sel = document.getElementById('zmstatMetric');
     sel.innerHTML = '<option value="">— выберите —</option>'
       + apps.map(function(a) { return '<option value="' + a + '">' + a + '</option>'; }).join('');
     sel.value = apps[0];
-    loadZmstat();
+    loadAppMetrics();
   } catch(err) { card.hidden = true; }
 }
 
-async function loadZmstat() {
+async function loadAppMetrics() {
   if (!deviceId) return;
   var appId = document.getElementById('zmstatMetric').value;
   if (!appId) return;
-  // Destroy all previous charts
   Object.keys(_appMetricCharts).forEach(function(k) {
     if (_appMetricCharts[k]) { _appMetricCharts[k].destroy(); delete _appMetricCharts[k]; }
   });
   document.getElementById('zmstatContent').innerHTML = '';
-  if (appId === 'fortigate') {
-    loadFgTraffic();
-    return;
-  }
+
+  await loadPanelScript(appId);
+  if (loadAppPanels(appId)) return;
+
+  // Generic fallback: line chart from /series for unknown apps
   try {
     var data = await apiGet('/api/app-metrics/series?device_id=' + deviceId + '&app_id=' + appId + '&hours=24');
     var items = data.items || [];
@@ -509,57 +524,45 @@ async function loadZmstat() {
   } catch(err) { showToast('Error: '+err, 'error'); }
 }
 
-async function loadFgTraffic() {
-  try {
-    var container = document.getElementById('zmstatContent');
-    container.innerHTML = ''
-      + '<div class="chart-row" style="margin-bottom:10px">'
-      + '  <div class="chart-card half" style="padding:8px"><div style="font-size:.72rem;color:var(--pt-muted);margin-bottom:4px">Source IPs</div><div id="fgDevSrcIp" style="height:120px"></div></div>'
-      + '  <div class="chart-card half" style="padding:8px"><div style="font-size:.72rem;color:var(--pt-muted);margin-bottom:4px">Dest IPs</div><div id="fgDevDstIp" style="height:120px"></div></div>'
-      + '</div>'
-      + '<div class="chart-row" style="margin-bottom:10px">'
-      + '  <div class="chart-card half" style="padding:8px"><div style="font-size:.72rem;color:var(--pt-muted);margin-bottom:4px">Apps</div><div id="fgDevApp" style="height:120px"></div></div>'
-      + '  <div class="chart-card half" style="padding:8px"><div style="font-size:.72rem;color:var(--pt-muted);margin-bottom:4px">Interfaces</div><div id="fgDevIntf" style="height:120px"></div></div>'
-      + '</div>'
-      + '<div class="chart-row" style="margin-bottom:10px">'
-      + '  <div class="chart-card half" style="padding:8px"><div style="font-size:.72rem;color:var(--pt-muted);margin-bottom:4px">Actions</div><div id="fgDevAction" style="height:120px"></div></div>'
-      + '  <div class="chart-card half" style="padding:8px"><div style="font-size:.72rem;color:var(--pt-muted);margin-bottom:4px">Threats</div><div id="fgDevThreat" style="height:120px"></div></div>'
-      + '</div>'
-      + '<div class="chart-card" style="padding:8px;overflow:hidden;margin-bottom:10px">'
-      + '  <div style="font-size:.72rem;color:var(--pt-muted);margin-bottom:4px">Policies</div>'
-      + '  <div id="fgDevPolicy" style="font-size:.72rem;overflow-y:auto;max-height:100px"></div>'
-      + '</div>';
+function loadAppPanels(appId) {
+  var panels = APP_PANELS[appId];
+  if (!panels) return false;
 
-    renderFgBar('fgDevSrcIp', 'srcip', 'sentbyte', 'Bytes');
-    renderFgBar('fgDevDstIp', 'dstip', 'sentbyte', 'Bytes');
-    renderFgBar('fgDevApp', 'app', null, 'Sessions');
-    renderFgBar('fgDevIntf', 'srcintf', null, 'Sessions');
-    renderFgBar('fgDevAction', 'action', null, 'Events');
-    renderFgBar('fgDevThreat', 'type', null, 'Events');
-    loadFgPolicies();
-  } catch(err) { showToast('Error: '+err, 'error'); }
+  var container = document.getElementById('zmstatContent');
+  var bars = panels.filter(function(p) { return p.type !== 'list'; });
+  var lists = panels.filter(function(p) { return p.type === 'list'; });
+
+  var html = '';
+  for (var i = 0; i < bars.length; i += 2) {
+    html += '<div class="chart-row" style="margin-bottom:10px">';
+    html += _panelBarHtml(bars[i]);
+    if (bars[i + 1]) html += _panelBarHtml(bars[i + 1]);
+    html += '</div>';
+  }
+  lists.forEach(function(p) {
+    html += '<div class="chart-card" style="padding:8px;overflow:hidden;margin-bottom:10px">'
+      + '<div style="font-size:.72rem;color:var(--pt-muted);margin-bottom:4px">' + p.title + '</div>'
+      + '<div id="' + p.id + '" style="font-size:.72rem;overflow-y:auto;max-height:100px"></div></div>';
+  });
+  container.innerHTML = html;
+
+  bars.forEach(function(p) {
+    renderAppBar(p.id, appId, p.dim, p.metric, p.unit, p.filter);
+  });
+  lists.forEach(function(p) {
+    renderAppList(p.id, appId, p.dim, p.limit);
+  });
+  return true;
 }
 
-async function loadFgPolicies() {
-  try {
-    var data = await apiGet('/api/app-metrics/stats?device_id=' + deviceId + '&app_id=fortigate&dim=policyname&hours=24&limit=10');
-    var items = data.items || [];
-    var el = document.getElementById('fgDevPolicy');
-    if (!el || items.length === 0) return;
-    var maxS = Math.max.apply(null, items.map(function(r) { return r.sessions; }));
-    el.innerHTML = items.map(function(r) {
-      var pct = maxS > 0 ? Math.round(r.sessions / maxS * 100) : 0;
-      return '<div style="display:flex;align-items:center;gap:4px;padding:3px 0">'
-        + '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (r.label||'—') + '</span>'
-        + '<span style="font-size:.68rem;color:var(--pt-muted);min-width:40px;text-align:right">' + r.sessions + '</span>'
-        + '<div style="width:50px;height:5px;background:rgba(255,255,255,.06);border-radius:2px"><div style="width:' + pct + '%;height:100%;background:var(--pt-accent);border-radius:2px"></div></div>'
-        + '</div>';
-    }).join('');
-  } catch(err) {}
+function _panelBarHtml(p) {
+  return '<div class="chart-card half" style="padding:8px">'
+    + '<div style="font-size:.72rem;color:var(--pt-muted);margin-bottom:4px">' + p.title + '</div>'
+    + '<div id="' + p.id + '" style="height:120px"></div></div>';
 }
 
-async function renderFgBar(elId, dim, metric, unit, filter) {
-  var url = '/api/app-metrics/stats?device_id=' + deviceId + '&app_id=fortigate&dim=' + dim + '&hours=24&limit=8';
+async function renderAppBar(elId, appId, dim, metric, unit, filter) {
+  var url = '/api/app-metrics/stats?device_id=' + deviceId + '&app_id=' + appId + '&dim=' + dim + '&hours=24&limit=8';
   if (metric) url += '&metric=' + metric;
   if (filter) url += '&filter=' + encodeURIComponent(filter);
   try {
@@ -572,7 +575,7 @@ async function renderFgBar(elId, dim, metric, unit, filter) {
       ...ptChartTheme,
       chart: { type: 'bar', toolbar: { show: false }, background: 'transparent',
                foreColor: '#7a8294', fontFamily: 'Roboto', height: 150 },
-      series: [{ name: unit, data: values }],
+      series: [{ name: unit || 'Count', data: values }],
       colors: ['#00d4ff'],
       plotOptions: { bar: { horizontal: true, borderRadius: 2, barHeight: '60%' } },
       dataLabels: { enabled: false },
@@ -582,6 +585,24 @@ async function renderFgBar(elId, dim, metric, unit, filter) {
       tooltip: { theme: 'dark' }
     });
     _appMetricCharts[elId].render();
+  } catch(err) {}
+}
+
+async function renderAppList(elId, appId, dim, limit) {
+  try {
+    var data = await apiGet('/api/app-metrics/stats?device_id=' + deviceId + '&app_id=' + appId + '&dim=' + dim + '&hours=24&limit=' + (limit || 20));
+    var items = data.items || [];
+    var el = document.getElementById(elId);
+    if (!el || items.length === 0) return;
+    var maxS = Math.max.apply(null, items.map(function(r) { return r.sessions; }));
+    el.innerHTML = items.map(function(r) {
+      var pct = maxS > 0 ? Math.round(r.sessions / maxS * 100) : 0;
+      return '<div style="display:flex;align-items:center;gap:4px;padding:3px 0">'
+        + '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (r.label||'—') + '</span>'
+        + '<span style="font-size:.68rem;color:var(--pt-muted);min-width:40px;text-align:right">' + r.sessions + '</span>'
+        + '<div style="width:50px;height:5px;background:rgba(255,255,255,.06);border-radius:2px"><div style="width:' + pct + '%;height:100%;background:var(--pt-accent);border-radius:2px"></div></div>'
+        + '</div>';
+    }).join('');
   } catch(err) {}
 }
 

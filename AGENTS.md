@@ -11,7 +11,6 @@
 - `ptlog-collector` — syslog collector (UDP/TCP 514)
 - `ptlog-ai` — AI worker (summarization, anomalies, embeddings)
 - `ptlog-infra` — PostgreSQL (pgvector, порт 5432)
-- `ptlog-ollama` — LLM сервер (порт 11434)
 - `ptlog-web` — Nginx, статика (порт 80)
 - Полные имена контейнеров в podman: `ptlog-app-backend`, `ptlog-collector-collector`, `ptlog-ai-ai-worker`, `ptlog-infra-postgres`
 
@@ -35,7 +34,7 @@
 
 ### AI Provider Timeouts
 - Per-provider timeout в config.yaml: `ai.openai.timeout`, `ai.ollama.timeout`, `ai.routerai.timeout`
-- Дефолты: OpenAI 180, Ollama 300, RouterAI 180
+- Дефолты: OpenAI 180, Ollama 600, RouterAI 180
 - Меняется без рестарта — `_check_config` подхватывает новое значение из БД и пересоздаёт сервисы
 
 ### Model Lists (config.yaml)
@@ -43,19 +42,14 @@
 - Генерируется `generate_config.pl`, читается `config.py` → `self.providers`
 - `GET /api/ai-config` отдаёт `config.providers` (не хардкод в Python)
 - `registry.py` удалён — больше нет жёсткой привязки моделей в коде
-- Для добавления модели достаточно:
-  1. Pull в Ollama
-  2. Добавить в `ai.providers` в `generate_config.pl`
-  3. Перегенерить config.yaml и передеплоить
+- Для добавления модели достаточно добавить в `ai.providers` в `generate_config.pl`, перегенерить config.yaml и передеплоить
 
 ### YAML::XS everywhere
 - `generate_config.pl` и `setup.pl` переписаны на `YAML::XS` вместо самописного `yaml()` sub и regex-парсинга
 - Установлен пакет `perl-YAML-LibYAML` на сервере и локально
-- Потребовалось при добавлении `ai.providers` — regex в `setup.pl` начал совпадать с `name: Ollama` из providers, заменив `database.name`
 - `setup.pl:read_deploy_yaml()` читает config.yaml через `YAML::XS::LoadFile`, без regex
 
 ### Timeout & Error Logging
-- Ollama timeout увеличен до 600s (дефолт в `generate_config.pl`, читается из config.yaml)
 - Все провайдеры ловят `httpx.ReadTimeout` в `chat()` и поднимают `TimeoutError` с указанием таймаута
 - `device_name` добавлен во все логи `summary_failed`, `daily_summary_failed`, `ai_anomaly_detection_failed`
 - Scheduler передаёт `hostname` из списка устройств

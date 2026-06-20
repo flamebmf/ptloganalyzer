@@ -1,0 +1,6 @@
+{
+  "app_id": "zimbramon",
+  "name": "Zimbra zmstat",
+  "parser": { "type": "builtin", "name": "zimbramon" },
+  "panels": []
+}

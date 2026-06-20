@@ -32,12 +32,12 @@ my $PULL        = 0;
 my $FORCE       = 0;
 my $REGISTRY    = $ENV{DOCKER_REGISTRY} || 'docker.io/pltec/ptloganalyzer';
 
-my %comp = map { $_ => 0 } qw(infra collector app ai web ollama);
+my %comp = map { $_ => 0 } qw(infra collector app ai web);
 my %db   = (host=>'', port=>5432, name=>'ptloganalyzer', user=>'ptlog', pass=>'', local=>1);
 my %coll = (port=>514, bind=>'0.0.0.0', udp=>1, tcp=>1, batch_size=>500, batch_interval=>1.0);
-my %ai   = (enabled=>0, provider=>'ollama',
+my %ai   = (enabled=>0, provider=>'routerai',
   openai_url=>'https://api.openai.com/v1', openai_key=>'', openai_model=>'gpt-4o-mini', openai_embed=>'text-embedding-3-small',
-  ollama_url=>'http://ollama.ptlog:11434', ollama_model=>'llama3.2:1b', ollama_embed=>'nomic-embed-text',
+  ollama_url=>'http://localhost:11434', ollama_model=>'llama3.2:1b', ollama_embed=>'nomic-embed-text',
   routerai_url=>'https://api.routerai.ai/v1', routerai_key=>'', routerai_model=>'deepseek/deepseek-v4-pro', routerai_embed=>'text-embedding-3-small');
 my %web  = (api_port=>8000, web_port=>80, serve_static=>0);
 my $LANG = 'ru';
@@ -96,7 +96,7 @@ my %T = (
     coll_bint => "Batch interval (секунд)",
     ai_title => "AI Engine",
     ai_choose => "Выберите AI провайдера",
-    ai_o1 => "Ollama (локально)",
+    ai_o1 => "Ollama (внешний сервер)",
     ai_o2 => "OpenAI / Azure OpenAI",
     ai_o3 => "RouterAI (маршрутизация моделей)",
     ai_prompt => "Ваш выбор [1/2/3]",
@@ -107,7 +107,6 @@ my %T = (
     ai_key => "API key",
     ai_model => "Chat модель",
     ai_embed => "Embedding модель",
-    ai_ollama_pod => "Запустить Ollama в pod'е?",
     web_title_proxy => "Web (nginx reverse proxy)",
     web_http => "HTTP порт",
     web_title_api => "API порт (статику раздаёт FastAPI)",
@@ -203,7 +202,7 @@ my %T = (
     coll_bint => "Batch interval (seconds)",
     ai_title => "AI Engine",
     ai_choose => "Choose AI provider",
-    ai_o1 => "Ollama (local)",
+    ai_o1 => "Ollama (external server)",
     ai_o2 => "OpenAI / Azure OpenAI",
     ai_o3 => "RouterAI (model routing)",
     ai_prompt => "Your choice [1/2/3]",
@@ -214,7 +213,6 @@ my %T = (
     ai_key => "API key",
     ai_model => "Chat model",
     ai_embed => "Embedding model",
-    ai_ollama_pod => "Run Ollama in a pod?",
     web_title_proxy => "Web (nginx reverse proxy)",
     web_http => "HTTP port",
     web_title_api => "API port (FastAPI serves static)",
@@ -402,7 +400,6 @@ sub read_deploy_yaml {
     }
     elsif ($section eq 'ai' && /^\s+(\w+):\s+(\S+)/) {
       if ($1 eq 'provider')    { $ai{provider} = $2 }
-      elsif ($1 eq 'ollama_url') { $ai{ollama_url} = $2 }
       elsif ($1 eq 'openai_url') { $ai{openai_url} = $2 }
       elsif ($1 eq 'routerai_url') { $ai{routerai_url} = $2 }
     }
@@ -421,7 +418,6 @@ sub read_deploy_yaml {
       $db{name} = $yaml->{database}{name} if defined $yaml->{database}{name};
       $ai{provider} = $yaml->{ai}{provider} if defined $yaml->{ai}{provider};
       $coll{port} = $yaml->{collector}{port} if defined $yaml->{collector}{port};
-      $ai{ollama_url} = $yaml->{ai}{ollama}{base_url} if defined $yaml->{ai}{ollama}{base_url};
       $ai{enabled} = $yaml->{ai}{enabled} ? 1 : 0 if defined $yaml->{ai}{enabled};
       $ai{openai_url} = $yaml->{ai}{openai}{base_url} if defined $yaml->{ai}{openai}{base_url};
       $ai{openai_key} = $yaml->{ai}{openai}{api_key} if defined $yaml->{ai}{openai}{api_key};
@@ -503,7 +499,7 @@ sub select_mode {
 
   while (1) {
     my $ans = prompt(t('mode_prompt'), '1');
-    %comp = map { $_ => 0 } qw(infra collector app ai web ollama);
+    %comp = map { $_ => 0 } qw(infra collector app ai web);
     if ($ans eq '1') { $MODE='full-stack'; $comp{infra}=$comp{collector}=$comp{app}=$comp{ai}=$comp{web}=1; last }
     elsif ($ans eq '2') { $MODE='server'; $comp{infra}=$comp{app}=$comp{ai}=$comp{web}=1; last }
     elsif ($ans eq '3') { $MODE='collector'; $comp{collector}=1; last }
@@ -585,30 +581,18 @@ sub ask_ai {
     $ai{openai_url} = prompt(t('ai_url'), $ai{openai_url});
     $ai{openai_model} = prompt(t('ai_model'), $ai{openai_model});
     $ai{openai_embed} = prompt(t('ai_embed'), $ai{openai_embed});
-    $comp{ollama} = 0;
   } elsif ($ans eq '3') {
     $ai{provider} = 'routerai';
     $ai{routerai_key} = prompt(t('ai_key') . ": ", '');
     $ai{routerai_url} = prompt(t('ai_url'), $ai{routerai_url});
     $ai{routerai_model} = prompt(t('ai_model'), $ai{routerai_model});
     $ai{routerai_embed} = prompt(t('ai_embed'), $ai{routerai_embed});
-    $comp{ollama} = 0;
   } else {
     $ai{provider} = 'ollama';
-    while (1) {
-      $ai{ollama_url} = prompt(t('ai_url'), $ai{ollama_url});
-      $ai{ollama_url} =~ s|/+$||;
-      last if $ai{ollama_url} !~ /^http/;
-      my $check_url = "$ai{ollama_url}/api/tags";
-      my $ok = system("curl -sf --max-time 5 '$check_url' >/dev/null 2>&1") == 0;
-      if ($ok) { info t('ai_ok'); last }
-      warn_msg t('ai_fail') . " $check_url";
-      my $retry = prompt(t('ai_retry'), 'y');
-      last if $retry =~ /^n/i;
-    }
+    $ai{ollama_url} = prompt(t('ai_url'), $ai{ollama_url});
+    $ai{ollama_url} =~ s|/+$||;
     $ai{ollama_model} = prompt(t('ai_model'), $ai{ollama_model});
     $ai{ollama_embed} = prompt(t('ai_embed'), $ai{ollama_embed});
-    $comp{ollama} = prompt_yn(t('ai_ollama_pod'), 'n') ? 1 : 0;
   }
 }
 
@@ -662,7 +646,7 @@ sub generate_configs {
   title "Генерация конфигурации";
 
   my $cfg_dir = "$INSTALL_DIR/config";
-  for my $d ($cfg_dir, "$INSTALL_DIR/data/pgdata", "$INSTALL_DIR/web", "$INSTALL_DIR/ollama") {
+  for my $d ($cfg_dir, "$INSTALL_DIR/data/pgdata", "$INSTALL_DIR/web") {
     mkdir $d unless -d $d;
   }
 
@@ -684,11 +668,10 @@ sub generate_configs {
   printf $dfh "data_dir: %s\n", $INSTALL_DIR;
   printf $dfh "ports:\n  collector: %s\n  api: %s\n  web: %s\n", $coll{port}, $web{api_port}, $web{web_port};
   printf $dfh "components:\n";
-  for my $c (qw(infra collector app ai web ollama)) {
+  for my $c (qw(infra collector app ai web)) {
     printf $dfh "  %s: %s\n", $c, bool_val($comp{$c});
   }
   printf $dfh "ai:\n  provider: %s\n", $ai{provider};
-  printf $dfh "  ollama_url: %s\n", $ai{ollama_url};
   if ($ai{provider} eq 'openai') {
     printf $dfh "  openai_url: %s\n", $ai{openai_url};
   }
@@ -741,9 +724,6 @@ sub generate_configs {
   $ENV{AI_OPENAI_URL}       = $ai{openai_url};
   $ENV{AI_OPENAI_MODEL}     = $ai{openai_model};
   $ENV{AI_OPENAI_EMBED}     = $ai{openai_embed};
-  $ENV{AI_OLLAMA_URL}       = $ai{ollama_url};
-  $ENV{AI_OLLAMA_MODEL}     = $ai{ollama_model};
-  $ENV{AI_OLLAMA_EMBED}     = $ai{ollama_embed};
   $ENV{AI_ROUTERAI_URL}     = $ai{routerai_url};
   $ENV{AI_ROUTERAI_MODEL}   = $ai{routerai_model};
   $ENV{AI_ROUTERAI_EMBED}   = $ai{routerai_embed};
@@ -790,7 +770,7 @@ sub generate_pods {
     '__APP_PORT__'       => '8000',
   );
 
-  for my $tmpl (qw(infra collector app ai web ollama)) {
+  for my $tmpl (qw(infra collector app ai web)) {
     my $src = "$src_pod_dir/$tmpl.kube";
     next unless -f $src;
     next unless $comp{$tmpl};
@@ -1030,28 +1010,6 @@ sub play_kube {
   system("$cmd 2>/dev/null");
 }
 
-sub ensure_ollama_models {
-  return if $ai{provider} ne 'ollama';
-  my $url   = $ai{ollama_url};
-  my $chat  = $ai{ollama_model};
-  my $embed = $ai{ollama_embed};
-  info "Проверка моделей Ollama...";
-  for my $model ($chat, $embed) {
-    next unless $model;
-    my $check_url = "$url/api/tags";
-    my $tags = capture("curl -sf --max-time 5 '$check_url' 2>/dev/null");
-    next unless $tags;
-    if ($tags =~ /\Q$model\E/) {
-      ok "Модель $model уже загружена";
-      next;
-    }
-    info "Загрузка модели $model (может занять время)...";
-    system("curl -sf -X POST '$url/api/pull' -d '{\"name\":\"$model\"}' --max-time 600 >/dev/null 2>&1");
-    if ($? == 0) { ok "Модель $model загружена" }
-    else         { warn_msg "Не удалось загрузить модель $model" }
-  }
-}
-
 sub deploy {
   title "Развёртывание";
 
@@ -1064,7 +1022,7 @@ sub deploy {
     ok "Сеть ptlog создана";
   }
 
-  for my $comp (qw(infra collector app ai web ollama)) {
+  for my $comp (qw(infra collector app ai web)) {
     next unless $comp{$comp};
     my $kube = "$pod_dir/$comp.kube";
     next unless -f $kube;
@@ -1112,9 +1070,6 @@ sub deploy {
     }
   }
 
-  # Pull Ollama models
-  ensure_ollama_models if $comp{ai};
-
   say '';
   info "Проверка статуса:";
   my $list = capture("podman pod list 2>/dev/null | grep ptlog");
@@ -1138,8 +1093,7 @@ sub show_summary {
   say "    app:             " . bool_val($comp{app});
   say "    ai:              " . bool_val($comp{ai});
   say "    web:             " . bool_val($comp{web});
-  say "    ollama:          " . bool_val($comp{ollama});
-  say '';
+    say '';
   if ($comp{collector}) {
     say "  " . t('sum_collector') . ":   $coll{bind}:$coll{port} (UDP:" . bool_val($coll{udp}) . " TCP:" . bool_val($coll{tcp}) . ")";
     say "  " . t('sum_batch') . ":       $coll{batch_size}msgs / $coll{batch_interval}s";
@@ -1205,8 +1159,6 @@ sub update_component {
   system("podman pod rm $pod_name 2>/dev/null");
   play_kube($kube);
   ok "$target обновлён";
-
-  ensure_ollama_models if $target eq 'ai';
 
   # Re-deploy app pod after AI update (config changed, app needs restart)
   if ($target eq 'ai' && $comp{app}) {
@@ -1296,7 +1248,7 @@ sub main {
       my $ans = prompt("Компоненты для обновления (через запятую) [$default]: ", $default);
       @update_targets = split /[,+]\s*/, lc $ans;
     }
-    my @valid = qw(infra collector app ai web ollama all);
+    my @valid = qw(infra collector app ai web all);
     for my $t (@update_targets) {
       unless (grep { $_ eq $t } @valid) {
         err "Неверный компонент: $t. Допустимые: " . join(', ', @valid);

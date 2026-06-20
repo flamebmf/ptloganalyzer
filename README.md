@@ -1,8 +1,8 @@
 # ptloganalyzer
 
-> **Version 0.7.3** — Self-hosted syslog analysis platform with AI-powered summarization, anomaly detection, and device-specific log parsing.
+> **Version 0.9.7** — Self-hosted syslog analysis platform with AI-powered summarization, anomaly detection, and application-level metric extraction.
 
-Collect syslogs from network devices (routers, switches, firewalls, access points), parse them with device-specific templates, and get structured AI analysis in Russian or English — hourly summaries, daily reports, and real-time anomaly alerts.
+Collect syslogs from network devices (routers, switches, firewalls, access points), parse them with device-specific templates and application parsers (FortiGate, Postfix, Zimbra), and get structured AI analysis in Russian or English — hourly summaries, daily reports, real-time anomaly alerts, and per-app KPIs.
 
 ---
 
@@ -13,27 +13,29 @@ Collect syslogs from network devices (routers, switches, firewalls, access point
 │  Network     │ ──────────────────→ │  Collector        │
 │  Devices     │    (RFC 3164/5424)  │  (async batch)    │
 └──────────────┘                     └────────┬─────────┘
-                                              │ batch insert
-                                              ▼
-┌──────────────┐    ┌─────────────────────────────────────┐
-│  Ollama      │    │  PostgreSQL + pgvector               │
-│  (external)  │    │  - syslog_messages (partitioned)     │
-├──────────────┤    │  - devices                           │
-│  OpenAI      │    │  - summaries (hourly + daily)        │
-├──────────────┤    │  - anomalies                         │
-│  RouterAI    │    │  - log_embeddings (vector search)    │
-└──────────────┘    └──────────┬──────────────────────────┘
-                               │
-        ┌──────────────────────┼──────────────────────┐
-        ▼                      ▼                      ▼
-┌──────────────┐    ┌──────────────────┐    ┌──────────────────┐
-│  AI Worker   │    │  FastAPI App      │    │  Web UI (SPA)    │
-│  - summarizer│    │  - REST API       │    │  - Dashboard     │
-│  - anomaly   │    │  - SSE push       │    │  - Logs/Search   │
-│  - embeddings│    │  - SPA redirect   │    │  - Devices       │
-│  - scheduler │    │  - Static files   │    │  - Anomalies     │
-└──────────────┘    └──────────────────┘    │  - Settings      │
-                                             └──────────────────┘
+                                               │ batch insert
+                                               ▼
+┌──────────────────────────────────────────────┐
+│  PostgreSQL + pgvector                        │
+│  - syslog_messages (partitioned)             │
+│  - devices                                   │
+│  - summaries (hourly + daily)                │
+│  - anomalies                                 │
+│  - log_embeddings (vector search)            │
+└──────────────────┬───────────────────────────┘
+                   │
+    ┌──────────────┼──────────────┐
+    ▼              ▼              ▼
+┌──────────┐ ┌────────────┐ ┌──────────────┐
+│ AI Worker│ │ FastAPI    │ │ Web UI (SPA) │
+│-summarizer│ │ - REST API│ │ - Dashboard  │
+│-anomaly  │ │ - SSE push│ │ - Log/Search │
+│-embedding│ │ - Static   │ │ - Devices    │
+│-scheduler│ │ - SPA      │ │ - Anomalies  │
+└──────────┘ └────────────┘ │ - Settings   │
+                             └──────────────┘
+
+AI Providers (external): Ollama · OpenAI · RouterAI
 ```
 
 ### Components
@@ -45,7 +47,7 @@ Collect syslogs from network devices (routers, switches, firewalls, access point
 | **FastAPI App** | REST API + static file serving + SPA engine | Container |
 | **AI Worker** | Background scheduler for summarization & anomaly detection | Container (separate process) |
 | **Web UI** | Single-page application (vanilla JS, ApexCharts) | Bundled with App |
-| **AI Providers** | Ollama (local), OpenAI, RouterAI (pluggable) | External / API |
+| **AI Providers** | Ollama, OpenAI, RouterAI (switchable at runtime) | External / API |
 
 ---
 
@@ -63,6 +65,13 @@ Collect syslogs from network devices (routers, switches, firewalls, access point
 - **`aruba_iap`** — Aruba Instant Access Point parser (extracts AP name from message body)
 - Extensible via `PARSERS` dict in `parser.py` — add custom regex templates per device
 
+### Application-Level Parsers (Plugin System)
+- **FortiGate** — extracts key=value fields (srcip, dstip, app, sentbyte, rcvdbyte, action, type, attack) with separate traffic and security panels
+- **Postfix** — extracts SMTP transactions (process, event, client/dest IPs, ehlo/quit/commands)
+- **Zimbra/Carbonio** — extracts CSV zmstat metrics (count, latency, queue size)
+- Plugin system via `app/manifests/<app_id>.json` — single-file definition of parser rules and UI panels
+- No code changes needed to add a new app parser — create a manifest file only
+
 ### AI Analysis (in Russian / English)
 
 | Type | Interval | Description |
@@ -73,16 +82,23 @@ Collect syslogs from network devices (routers, switches, firewalls, access point
 
 - Time-period-based analysis — complete log coverage, no gaps
 - Log IDs (`#12345`) are clickable in the UI — opens the original log record in a modal
-- Three AI backends: **Ollama** (local), **OpenAI**, **RouterAI** (switchable at runtime)
+- Three AI backends: **Ollama**, **OpenAI**, **RouterAI** (switchable at runtime)
 
 ### Web UI
 - **Dark theme** with animated gradient background (35-bar JS engine)
-- **Dashboard** — log volume (today vs yesterday), anomaly trend chart, storage info, devices grid, severity distribution, top apps, per-device stats, top errors, live log tail
-- **Devices** — grid view with per-device stats, ON/OFF toggle, rename
-- **Logs** — searchable log table with severity/device filters
-- **Anomalies** — categorized anomaly list with real-time SSE push
-- **Settings** — AI provider switch, language (ru/en), device management
+- **Dashboard** — log volume (today vs yesterday, week vs week, month vs month), anomaly trend with regression forecast, storage info, devices grid, severity distribution, top apps, per-device stats, top errors, live log tail
+- **Devices** — searchable/filterable grid with pagination, per-device stats, ON/OFF toggle, rename, anomaly and AI report quick filters
+- **Device detail** — per-device logs, AI summary (expandable), anomaly list with detail modals, app metrics panels (FortiGate traffic/security, Postfix, Zimbra), volume and severity charts
+- **Logs** — searchable log table with severity/device filters, safe 48h default time window
+- **Anomalies** — categorized anomaly list with real-time SSE push, trend chart with forecast
+- **Settings** — AI provider switch, per-task model selection, language (ru/en), device parse template assignment
 - **SPA** — single-page application with hash routing, no full page reloads
+
+### Dashboard
+- Log volume charts: **today vs yesterday** (D2D), **this week vs last week** (W2W), **this month vs last month** (M2M) — area charts with gradient fill
+- Anomaly trend with **linear regression** and **1-hour forecast**
+- Severity distribution (donut), storage info, per-device stats, top errors, live log tail
+- In-memory caching for slow queries (5 min), parallel SQL via `asyncio.gather`
 
 ### Vector Search (pgvector)
 - Automatic embeddings generation for log messages
@@ -141,14 +157,14 @@ perl setup.pl --push
 
 ### Configure
 
-Edit `config.yaml` or use `deploy.yaml` + `setup.pl` generation:
+Edit `config.yaml` or use `setup.pl` interactive setup:
 
 ```yaml
 ai:
-  provider: ollama        # ollama | openai | routerai
+  provider: routerai        # ollama | openai | routerai
   ollama:
-    base_url: http://ollama.ptlog:11434
-    chat_model: llama3.2:1b
+    base_url: http://192.168.1.100:11434
+    chat_model: qwen2.5:7b
   summarization:
     interval_minutes: 60
   anomaly_detection:
@@ -158,7 +174,7 @@ ai:
 ### Run
 
 ```bash
-# Start all pods
+# Start all pods (Ollama must be running separately if used)
 podman play kube pod/infra.kube
 podman play kube pod/collector.kube
 podman play kube pod/app.kube
@@ -166,6 +182,20 @@ podman play kube pod/ai.kube
 ```
 
 Open `http://localhost:8000` (or configured API port).
+
+### AI Provider Hardware Requirements
+
+| Provider | Min RAM | Min CPU | Recommendation |
+|----------|---------|---------|----------------|
+| **OpenAI** | — | — | External API, no local hardware needed |
+| **RouterAI** | — | — | External API, no local hardware needed |
+| **Ollama** (local) | 8 GB | 4 cores | 16 GB + 8 cores for Qwen 2.5 7B / DeepSeek R1 7B |
+
+**Ollama minimum models for quality reports:**
+- **Chat model**: `qwen2.5:7b` (7B params, ~4.7 GB) or `llama3.2:3b` (~2.3 GB) for lightweight setups — smaller models produce noticeably worse summaries and anomaly descriptions
+- **Embedding model**: `nomic-embed-text` (~274 MB) — sufficient for semantic search
+- Do **not** use `llama3.2:1b` for production — output quality is too low for reliable analysis
+- Ollama runs on a **separate machine** (not deployed by `setup.pl`), point `ai.ollama.base_url` to its API
 
 ---
 
@@ -186,11 +216,10 @@ Open `http://localhost:8000` (or configured API port).
 |---------|--------|
 | `database` | host, port, name, user, password |
 | `collector` | port, udp, tcp, bind, batch_size, batch_interval |
-| `ai.openai` | base_url, chat_model, embedding_model |
-| `ai.ollama` | base_url, chat_model, embedding_model |
-| `ai.routerai` | base_url, chat_model, embedding_model |
-| `ai.summarization` | interval_minutes |
-| `ai.anomaly_detection` | interval_minutes, sensitivity |
+| `ai.providers` | per-provider base_url, model, timeout |
+| `ai.summarization` | interval_minutes, provider, model |
+| `ai.anomaly_detection` | interval_minutes, sensitivity, provider, model |
+| `ai.embeddings` | provider, model |
 | `devices` | list of devices with hostname, ip, device_type, enabled |
 
 ---
@@ -201,18 +230,26 @@ Open `http://localhost:8000` (or configured API port).
 |--------|------|-------------|
 | `GET` | `/health` | Health check |
 | `GET` | `/api/version` | Version info |
-| `GET` | `/api/devices` | List devices |
-| `GET` | `/api/devices/{id}` | Get device |
-| `PATCH` | `/api/devices/{id}` | Update device (name, enabled) |
-| `GET` | `/api/logs` | Search logs (device_id, severity, query, etc.) |
+| `GET` | `/api/devices` | List devices (search, filter, pagination) |
+| `GET` | `/api/devices/{id}` | Get device with stats |
+| `PATCH` | `/api/devices/{id}` | Update device (name, enabled, template_id) |
+| `GET` | `/api/logs` | Search logs (device_id, severity, query, time window) |
 | `GET` | `/api/logs/{id}` | Get single log record |
 | `GET` | `/api/summaries` | List summaries by device |
 | `GET` | `/api/anomalies` | List anomalies |
 | `GET` | `/api/settings` | Get settings |
-| `PATCH` | `/api/settings` | Update settings (ai_provider, language, ai_language) |
-| `GET` | `/api/dashboard/history` | Dashboard aggregate data (volume, severity, per-device, anomaly trend, today vs yesterday) |
+| `PATCH` | `/api/settings` | Update settings (ai_provider, language, ai_language, per-task model) |
+| `GET` | `/api/dashboard/history` | Dashboard aggregate (volume, severity, per-device, anomaly trend, W2W, M2M) |
 | `GET` | `/api/dashboard/storage` | Database size, total logs, avg/day, oldest log |
 | `GET` | `/api/dashboard/logtail` | Last N log messages with device info |
+| `GET` | `/api/parse-templates` | List parse templates |
+| `GET` | `/api/app-manifest/{app_id}` | Get app plugin manifest definition |
+| `GET` | `/api/app-metrics/list` | List app metric types per device |
+| `GET` | `/api/app-metrics/stats` | Aggregated app metrics (dimension + filter + metric) |
+| `GET` | `/api/device-apps/{id}` | Get app parsers enabled for device |
+| `PATCH` | `/api/device-apps/{id}` | Toggle app parser for device |
+| `GET` | `/api/ai-config` | Get AI provider/model config |
+| `PATCH` | `/api/ai-config` | Update AI per-task provider/model |
 | `GET` | `/api/sse/events` | Server-Sent Events (real-time anomaly push) |
 
 ---
@@ -229,9 +266,14 @@ ptloganalyzer/
 │   ├── database.py             # PostgreSQL + pgvector, all queries
 │   ├── version.py              # Version constants
 │   ├── generate_config.pl      # YAML config generator from deploy.yaml
+│   ├── manifests/              # App plugin manifests (FortiGate, Postfix, Zimbra)
+│   │   ├── fortigate.json
+│   │   ├── postfix.json
+│   │   └── zimbramon.json
 │   ├── collector/
 │   │   ├── server.py           # Async UDP/TCP syslog receiver
-│   │   └── parser.py           # RFC 5424/3164 + device-specific parsers
+│   │   ├── parser.py           # RFC 5424/3164 + device-specific parsers
+│   │   └── app_parsers.py      # App-level KV parsers (manifest-driven)
 │   ├── ai/
 │   │   ├── provider.py         # Abstract AI provider
 │   │   ├── openai_provider.py  # OpenAI implementation
@@ -239,7 +281,8 @@ ptloganalyzer/
 │   │   ├── routerai_provider.py# RouterAI implementation
 │   │   ├── summarizer.py       # Hourly + daily AI summarization
 │   │   ├── anomaly_detector.py # Statistical + AI anomaly detection
-│   │   └── embeddings.py       # pgvector embedding service
+│   │   ├── embeddings.py       # pgvector embedding service
+│   │   └── prompts.py          # Prompt templates (ru/en)
 │   ├── ai_worker/
 │   │   ├── __main__.py         # Worker entry point
 │   │   └── scheduler.py        # Periodic task scheduler
@@ -250,11 +293,13 @@ ptloganalyzer/
 │       ├── summaries.py        # Summary listing
 │       ├── settings.py         # Runtime settings + persistence
 │       ├── dashboard.py        # Dashboard aggregate data
+│       ├── app_metrics.py      # App metrics + manifest API
+│       ├── parse_templates.py  # Parse template CRUD
 │       └── sse.py              # Server-Sent Events for real-time push
 ├── web/
 │   ├── index.html              # SPA shell + dashboard (navbar, footer, modal, bg)
-│   ├── devices.html            # Device grid
-│   ├── device.html             # Per-device detail + logs + AI summary
+│   ├── devices.html            # Device grid (search, filter, pagination)
+│   ├── device.html             # Per-device detail + logs + AI summary + app metrics
 │   ├── logs.html               # Global log search
 │   ├── anomalies.html          # Anomaly list
 │   ├── settings.html           # Settings page
@@ -263,10 +308,10 @@ ptloganalyzer/
 │   └── js/
 │       ├── app.js              # SPA engine, toast, log modal, helpers
 │       ├── bg-bars.js          # Animated gradient background (35 bars)
-│       ├── charts.js           # ApexCharts wrappers
+│       ├── charts.js           # ApexCharts wrappers (area, bar, donut, trend+forecast)
 │       ├── lang.js             # i18n (ru/en)
 │       └── sse-client.js       # SSE event listener
-├── pod/                         # Kubernetes/Podman pod manifests
+├── pod/                         # Podman pod manifests
 │   ├── infra.kube               # PostgreSQL with pgvector
 │   ├── collector.kube           # Syslog collector
 │   ├── app.kube                 # FastAPI web app
@@ -274,10 +319,7 @@ ptloganalyzer/
 ├── VERSION                      # Single source of version
 ├── config.yaml                  # Runtime config template
 ├── deploy.yaml                  # Install params for setup.pl
-├── Dockerfile                   # Multi-stage build
-├── Dockerfile.ai                # AI worker image
-├── requirements.txt
-└── setup.pl                     # Interactive install/update
+├── setup.pl                     # Interactive install/update
 ```
 
 ### Version Management
@@ -287,11 +329,13 @@ Single source of truth: **`VERSION`** file. The version auto-propagates to:
 - HTML cache-busting query strings (`?v=__APP_VERSION__`, substituted by `setup.pl`)
 - Docker image labels (via `ARG VERSION`)
 
-### Adding a New Device Parser
+### Adding a New App Parser (Plugin System)
 
-1. Add a regex and parse function in `app/collector/parser.py`
-2. Register in the `PARSERS` dict
-3. Set `parser: your_parser_name` on the device in config or DB
+1. Create `app/manifests/<app_id>.json` with parser rules and panel definitions
+2. For KV parsers: specify `kv_delimiter`, `field_delimiter`, and `require_keys` — the factory handles extraction
+3. For custom logic: implement a parse function in `app/collector/app_parsers.py` and reference it in the manifest
+4. Define UI panels: `dimension`, `filter`, `metric` for the stats API — panels auto-appear on device.html
+5. No Python router or HTML changes needed
 
 ### Adding a New AI Provider
 

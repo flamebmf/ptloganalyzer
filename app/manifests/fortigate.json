@@ -1,0 +1,18 @@
+{
+  "app_id": "fortigate",
+  "name": "FortiGate",
+  "parser": {
+    "type": "kv",
+    "match_fields": ["type", "logid"],
+    "strip_prefix": "- "
+  },
+  "panels": [
+    { "id": "fgDevSrcIp", "title": "Source IPs", "dim": "srcip", "metric": "sentbyte", "unit": "Bytes" },
+    { "id": "fgDevDstIp", "title": "Dest IPs", "dim": "dstip", "metric": "sentbyte", "unit": "Bytes" },
+    { "id": "fgDevApp", "title": "Apps", "dim": "app", "unit": "Sessions" },
+    { "id": "fgDevIntf", "title": "Interfaces", "dim": "srcintf", "unit": "Sessions" },
+    { "id": "fgDevAttack", "title": "Attacks", "dim": "attack", "filter": "type:utm", "unit": "Events" },
+    { "id": "fgDevThreat", "title": "Attacker IPs", "dim": "srcip", "filter": "type:utm", "unit": "Events" },
+    { "id": "fgDevPolicy", "title": "Policies", "dim": "policyname", "type": "list", "limit": 10 }
+  ]
+}

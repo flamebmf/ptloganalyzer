@@ -1,0 +1,6 @@
+{
+  "app_id": "postfix",
+  "name": "Postfix mail logs",
+  "parser": { "type": "builtin", "name": "postfix" },
+  "panels": []
+}

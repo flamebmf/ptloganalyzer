@@ -229,11 +229,11 @@ async function loadDashboardCharts() {
   try {
     const data = await apiGet('/api/dashboard/history');
     window._volD2D = data.volume.map(d => ({ hour: d.hour, count: d.count }));
-    window._volD2DPrev = data.volume_yesterday.map(d => ({ hour: d.hour, count: d.count }));
+    window._volD2DPrev = data.volume_yesterday.map(d => ({ hour: d.hour, count: d.count, orig_hour: d.orig_hour }));
     window._volWeek = (data.volume_week || []).map(d => ({ day: d.day, count: d.count }));
-    window._volWeekPrev = (data.volume_week_prev || []).map(d => ({ day: d.day, count: d.count }));
+    window._volWeekPrev = (data.volume_week_prev || []).map(d => ({ day: d.day, count: d.count, orig_day: d.orig_day }));
     window._volMonth = (data.volume_month || []).map(d => ({ day: d.day, count: d.count }));
-    window._volMonthPrev = (data.volume_month_prev || []).map(d => ({ day: d.day, count: d.count }));
+    window._volMonthPrev = (data.volume_month_prev || []).map(d => ({ day: d.day, count: d.count, orig_day: d.orig_day }));
     var volChart = document.getElementById('dashVolumeChart');
     if (volChart && volChart.children.length < 2) {
       _volChart = createLogVolumeD2DChart('dashVolumeChart', window._volD2D, window._volD2DPrev);

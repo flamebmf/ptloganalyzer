@@ -65,15 +65,19 @@ async def bulk_data():
         }
     # Anomaly counts per device
     anom_rows = await db.fetch(
-        "SELECT device_id, COUNT(*) AS cnt FROM anomalies "
-        "WHERE resolved_at IS NULL GROUP BY device_id"
+        "SELECT device_id, COUNT(*) AS cnt, "
+        "MAX(detected_at) AS last_anomaly_at, "
+        "COUNT(*) FILTER (WHERE detected_at > NOW() - INTERVAL '2 hours') AS cnt_2h "
+        "FROM anomalies WHERE resolved_at IS NULL GROUP BY device_id"
     )
     for r in anom_rows:
-        did_key = r["device_id"]  # int
+        did_key = r["device_id"]
+        entry = {"anomalies": r["cnt"], "last_anomaly_at": r["last_anomaly_at"],
+                 "anomalies_recent": r["cnt_2h"]}
         if did_key in stats:
-            stats[did_key]["anomalies"] = r["cnt"]
+            stats[did_key].update(entry)
         else:
-            stats[did_key] = {"anomalies": r["cnt"]}
+            stats[did_key] = entry
     # Last AI summary per device
     summary_rows = await db.fetch(
         "SELECT device_id, MAX(created_at) AS last_summary_at "

@@ -32,7 +32,10 @@ async def lifespan(app: FastAPI):
                         ("daily_summary_enabled", "daily_summary_enabled")]:
         existing = await db.get_setting(k)
         if existing is None:
-            await db.set_setting(k, getattr(config, cfg_attr))
+            val = getattr(config, cfg_attr)
+            if isinstance(val, bool):
+                val = "true" if val else "false"
+            await db.set_setting(k, val)
 
     # Seed per-task AI config from config.yaml
     for task in ("summarization", "anomaly_detection", "embeddings"):
@@ -87,7 +90,7 @@ def create_app() -> FastAPI:
         }
 
     # Routers
-    from app.routers import devices, logs, anomalies, sse, settings, summaries, dashboard, ai_config, zmstat
+    from app.routers import devices, logs, anomalies, sse, settings, summaries, dashboard, ai_config, app_metrics
 
     app.include_router(devices.router, prefix="/api")
     app.include_router(logs.router, prefix="/api")
@@ -97,7 +100,7 @@ def create_app() -> FastAPI:
     app.include_router(summaries.router, prefix="/api")
     app.include_router(dashboard.router, prefix="/api")
     app.include_router(ai_config.router, prefix="/api")
-    app.include_router(zmstat.router, prefix="/api")
+    app.include_router(app_metrics.router, prefix="/api")
 
     @app.middleware("http")
     async def spa_redirect(request: Request, call_next):

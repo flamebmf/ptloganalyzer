@@ -1,6 +1,10 @@
 # Copyright (c) 2026 PlurumTech.com
 # SPDX-License-Identifier: LicenseRef-Personal-Use-Only
+import json
+from pathlib import Path
+
 from fastapi import APIRouter, Query, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import structlog
 
@@ -10,6 +14,16 @@ from app.main import db
 from app.collector.app_parsers import APP_PARSERS
 
 router = APIRouter(tags=["app_metrics"])
+_MANIFEST_DIR = Path(__file__).resolve().parent.parent / "manifests"
+
+
+@router.get("/app-manifest/{app_id}")
+async def get_app_manifest(app_id: str):
+    """Return unified manifest (parser config + panel definitions) for an app."""
+    fpath = _MANIFEST_DIR / f"{app_id}.json"
+    if not fpath.is_file():
+        raise HTTPException(404, f"No manifest for app '{app_id}'")
+    return JSONResponse(content=json.loads(fpath.read_text()))
 
 
 @router.get("/app-metrics/list")
@@ -93,7 +107,9 @@ async def get_app_stats(
     """Aggregate app_metrics by dimension. Optional filter like 'action:deny' or 'type:utm'."""
     dim_col = f"fields->>'{dim}'"
     valid = {"srcip", "dstip", "srcintf", "dstintf", "app", "policy", "action", "service",
-             "policyname", "appcat", "srcport", "dstport", "proto", "osname", "type", "subtype"}
+             "policyname", "appcat", "srcport", "dstport", "proto", "osname", "type", "subtype",
+             "attack", "severity", "eventtype", "direction", "crlevel", "hostname", "url",
+             "srccountry", "dstcountry", "httpmethod", "agent", "msg", "profile", "ref"}
     if dim not in valid:
         raise HTTPException(400, f"Invalid dim: {dim}. Valid: {', '.join(sorted(valid))}")
 

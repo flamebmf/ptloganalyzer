@@ -534,21 +534,25 @@ class Database:
             where.append(f"facility = ${i}"); args.append(facility); i += 1
         if query:
             where.append(f"message ILIKE ${i}"); args.append(f"%{query}%"); i += 1
+        # Default time window to avoid full table scan
+        if not query:
+            where.append(f"ts > NOW() - INTERVAL '48 hours'")
         where_sql = " AND ".join(where) if where else "TRUE"
 
         # Use log_stats_hourly for count when no full-text search
-        if not query and device_id is not None:
-            count_args = [device_id]
+        if not query:
+            count_parts = [f"hour > NOW() - INTERVAL '48 hours'"]
+            count_args = []
+            if device_id is not None:
+                count_parts.append(f"device_id = ${len(count_args) + 1}")
+                count_args.append(device_id)
             if severity is not None:
-                total = await self.fetchval(
-                    "SELECT COALESCE(SUM(count), 0) FROM log_stats_hourly "
-                    "WHERE device_id = $1 AND severity = $2", *count_args, severity
-                )
-            else:
-                total = await self.fetchval(
-                    "SELECT COALESCE(SUM(count), 0) FROM log_stats_hourly "
-                    "WHERE device_id = $1", *count_args
-                )
+                count_parts.append(f"severity = ${len(count_args) + 1}")
+                count_args.append(severity)
+            total = await self.fetchval(
+                "SELECT COALESCE(SUM(count), 0) FROM log_stats_hourly WHERE "
+                + " AND ".join(count_parts), *count_args
+            )
         else:
             total = await self.fetchval(
                 f"SELECT COUNT(*) FROM syslog_messages WHERE {where_sql}", *args

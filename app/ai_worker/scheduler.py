@@ -142,8 +142,9 @@ class Scheduler:
                 db_val = await self.db.get_setting(key)
                 if db_val is not None:
                     current = getattr(self.cfg, key, None)
-                    if str(db_val).lower() != str(current).lower() if current else True:
-                        setattr(self.cfg, key, db_val.lower() == "true")
+                    db_bool = str(db_val).lower() in ("true", "t", "1")
+                    if db_bool != current:
+                        setattr(self.cfg, key, db_bool)
                         log.info("summary_toggle_changed", key=key, value=db_val)
                         changed = True
 

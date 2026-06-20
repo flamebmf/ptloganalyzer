@@ -53,7 +53,7 @@ $cfg{collector} = {
 
 $cfg{ai} = {
   enabled  => yn($ENV{COMP_AI}),
-  provider => $ENV{AI_PROVIDER} // 'ollama',
+  provider => $ENV{AI_PROVIDER} // 'routerai',
   openai => {
     api_key        => '${OPENAI_API_KEY}',
     base_url       => $ENV{AI_OPENAI_URL}     // 'https://api.openai.com/v1',
@@ -63,7 +63,7 @@ $cfg{ai} = {
     timeout        => $ENV{AI_OPENAI_TIMEOUT}  // 180,
   },
   ollama => {
-    base_url       => $ENV{AI_OLLAMA_URL}     // 'http://ollama.ptlog:11434',
+    base_url       => $ENV{AI_OLLAMA_URL}     // 'http://localhost:11434',
     chat_model     => $ENV{AI_OLLAMA_MODEL}     // 'llama3.2:1b',
     embedding_model => $ENV{AI_OLLAMA_EMBED}  // 'nomic-embed-text',
     embedding_dims => 768,

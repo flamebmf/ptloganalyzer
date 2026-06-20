@@ -35,7 +35,7 @@ function createLogVolumeD2DChart(elId, data, dataYesterday) {
   if (dataYesterday && dataYesterday.length) {
     series.push({
       name: 'Yesterday',
-      data: dataYesterday.map(d => ({ x: d.hour, y: d.count }))
+      data: dataYesterday.map(d => ({ x: d.hour, y: d.count, orig_hour: d.orig_hour }))
     });
   }
   var options = {
@@ -52,6 +52,23 @@ function createLogVolumeD2DChart(elId, data, dataYesterday) {
     },
     dataLabels: { enabled: false },
     markers: { size: 0 },
+    tooltip: {
+      theme: 'dark',
+      shared: false,
+      custom: function({ series, seriesIndex, dataPointIndex, w }) {
+        var val = series[seriesIndex][dataPointIndex];
+        var name = w.globals.seriesNames[seriesIndex];
+        var dp = w.config.series[seriesIndex].data[dataPointIndex] || {};
+        var d = new Date(dp.orig_hour || dp.x);
+        var ds = ('0' + d.getDate()).slice(-2) + '.' + ('0' + (d.getMonth() + 1)).slice(-2)
+          + ' ' + ('0' + d.getHours()).slice(-2) + ':00';
+        return '<div class="apexcharts-tooltip-series-group apexcharts-active" style="display:flex;padding:4px 8px;align-items:center;gap:6px">'
+          + '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + w.globals.colors[seriesIndex] + '"></span>'
+          + '<span style="color:#7a8294">' + name + '</span>'
+          + '<span style="color:#e4e8ee;font-weight:600">' + ds + ': ' + (val || 0) + '</span>'
+          + '</div>';
+      }
+    },
     xaxis: {
       type: 'datetime',
       labels: {
@@ -76,7 +93,7 @@ function createLogVolumeWeekChart(elId, data, dataPrev) {
   if (dataPrev && dataPrev.length) {
     series.push({
       name: 'Last week',
-      data: dataPrev.map(d => ({ x: d.day, y: d.count }))
+      data: dataPrev.map(d => ({ x: d.day, y: d.count, orig_day: d.orig_day }))
     });
   }
   var options = {
@@ -90,6 +107,22 @@ function createLogVolumeWeekChart(elId, data, dataPrev) {
     fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.3, opacityTo: 0, stops: [0, 100] } },
     dataLabels: { enabled: false },
     markers: { size: 0 },
+    tooltip: {
+      theme: 'dark',
+      shared: false,
+      custom: function({ series, seriesIndex, dataPointIndex, w }) {
+        var val = series[seriesIndex][dataPointIndex];
+        var name = w.globals.seriesNames[seriesIndex];
+        var dp = w.config.series[seriesIndex].data[dataPointIndex] || {};
+        var d = new Date(dp.orig_day || dp.x);
+        var ds = ('0' + d.getDate()).slice(-2) + '.' + ('0' + (d.getMonth() + 1)).slice(-2);
+        return '<div class="apexcharts-tooltip-series-group apexcharts-active" style="display:flex;padding:4px 8px;align-items:center;gap:6px">'
+          + '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + w.globals.colors[seriesIndex] + '"></span>'
+          + '<span style="color:#7a8294">' + name + '</span>'
+          + '<span style="color:#e4e8ee;font-weight:600">' + ds + ': ' + (val || 0) + '</span>'
+          + '</div>';
+      }
+    },
     xaxis: {
       type: 'datetime',
       labels: {
@@ -118,7 +151,7 @@ function createLogVolumeMonthChart(elId, data, dataPrev) {
   if (dataPrev && dataPrev.length) {
     series.push({
       name: 'Last month',
-      data: dataPrev.map(d => ({ x: d.day, y: d.count }))
+      data: dataPrev.map(d => ({ x: d.day, y: d.count, orig_day: d.orig_day }))
     });
   }
   var options = {
@@ -132,6 +165,22 @@ function createLogVolumeMonthChart(elId, data, dataPrev) {
     fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.3, opacityTo: 0, stops: [0, 100] } },
     dataLabels: { enabled: false },
     markers: { size: 0 },
+    tooltip: {
+      theme: 'dark',
+      shared: false,
+      custom: function({ series, seriesIndex, dataPointIndex, w }) {
+        var val = series[seriesIndex][dataPointIndex];
+        var name = w.globals.seriesNames[seriesIndex];
+        var dp = w.config.series[seriesIndex].data[dataPointIndex] || {};
+        var d = new Date(dp.orig_day || dp.x);
+        var ds = ('0' + d.getDate()).slice(-2) + '.' + ('0' + (d.getMonth() + 1)).slice(-2);
+        return '<div class="apexcharts-tooltip-series-group apexcharts-active" style="display:flex;padding:4px 8px;align-items:center;gap:6px">'
+          + '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + w.globals.colors[seriesIndex] + '"></span>'
+          + '<span style="color:#7a8294">' + name + '</span>'
+          + '<span style="color:#e4e8ee;font-weight:600">' + ds + ': ' + (val || 0) + '</span>'
+          + '</div>';
+      }
+    },
     xaxis: {
       type: 'datetime',
       labels: {

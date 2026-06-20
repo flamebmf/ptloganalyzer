@@ -165,6 +165,7 @@ body {
 }
 .btn-outline:hover { border-color:var(--pt-accent); color:var(--pt-accent) }
 .btn-sm { padding:4px 10px; font-size:.72rem }
+.device-filter.active { background:var(--pt-accent);color:#fff;border-color:var(--pt-accent) }
 .pagination-bar .btn:disabled { opacity:.3; pointer-events:none }
 
 table { width:100%; border-collapse:collapse; font-size:.85rem }

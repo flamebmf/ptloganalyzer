@@ -4,24 +4,63 @@
 
 Each parser receives the raw message text and returns:
     (app_id: str, fields: dict) or None if it doesn't match.
+
+Parsers are defined in manifests/*.json.  Two types:
+  - "builtin": references a parser function from this module
+  - "kv":      generic key=value extractor, fully declarative
 """
 
+import json
 import re
+from pathlib import Path
+
+_MANIFEST_DIR = Path(__file__).resolve().parent.parent / "manifests"
+
+# ── Generic key=value extractor ──
+_KV_RE = re.compile(r'(\w[\w-]*)=(?:"([^"]*)"|(\S+))')
+
+
+def _parse_keys(msg: str) -> dict:
+    fields = {}
+    for m in _KV_RE.finditer(msg):
+        key = m.group(1)
+        val = m.group(2) if m.group(2) is not None else (m.group(3) or "")
+        try:
+            fields[key] = int(val)
+        except (ValueError, TypeError):
+            try:
+                fields[key] = float(val) if "." in val else val
+            except (ValueError, TypeError):
+                fields[key] = val
+    return fields
+
+
+def _make_kv_parser(app_id: str, match_fields: list[str], strip_prefix: str | None = None):
+    """Create a parser from declarative config: require N fields, extract all KV pairs."""
+    field_res = [re.compile(rf'\b{f}="?\w+"?\b') for f in match_fields]
+
+    def parse(message: str) -> tuple[str, dict] | None:
+        msg = message
+        if strip_prefix:
+            msg = msg.lstrip(strip_prefix).strip()
+        for fre in field_res:
+            if not fre.search(msg):
+                return None
+        fields = _parse_keys(msg)
+        for f in match_fields:
+            if f not in fields:
+                return None
+        return (app_id, fields)
+
+    return parse
+
 
 # ── zimbramon (Carbonio/Zimbra zmstat) ──
-# Matches: "zimbramon[PID]: PID:info: zmstat METRIC.csv: HEADERS:: VALUES"
 _ZIMBRAMON_RE = re.compile(
     r"zimbramon\[\d+\]:\s+\d+:info:\s+"
     r"zmstat\s+(\S+)\.csv:\s+"
     r"(.*?)::\s*(.*)"
 )
-
-# ── fortigate (FortiOS structured key=value logs) ──
-# Matches: "type=\"traffic\" subtype=\"forward\" ... logid=\"0000000013\" ..."
-# Requires BOTH type= AND logid= to avoid false positives
-_FORTI_RE = re.compile(r'\btype="?(\w+)"?\b')
-_FORTI_LOGID_RE = re.compile(r'\blogid="?(\d+)"?')
-_FORTI_KV_RE = re.compile(r'(\w[\w-]*)=(?:"([^"]*)"|(\S+))')
 
 
 def parse_zimbramon(message: str) -> tuple[str, dict] | None:
@@ -47,41 +86,7 @@ def parse_zimbramon(message: str) -> tuple[str, dict] | None:
     return ("zimbramon", fields)
 
 
-def _parse_keys(msg: str) -> dict:
-    fields = {}
-    for m in _FORTI_KV_RE.finditer(msg):
-        key = m.group(1)
-        val = m.group(2) if m.group(2) is not None else (m.group(3) or "")
-        try:
-            fields[key] = int(val)
-        except (ValueError, TypeError):
-            try:
-                fields[key] = float(val) if "." in val else val
-            except (ValueError, TypeError):
-                fields[key] = val
-    return fields
-
-
-def parse_fortigate(message: str) -> tuple[str, dict] | None:
-    msg = message.lstrip("- ").strip()
-    if not _FORTI_RE.search(msg):
-        return None
-    if not _FORTI_LOGID_RE.search(msg):
-        return None
-    fields = _parse_keys(msg)
-    if "type" not in fields:
-        return None
-    return ("fortigate", fields)
-
-
 # ── postfix (Carbonio/Zimbra postfix mail logs) ──
-# Matches:
-#   postfix/postscreen[PID]: CONNECT from [IP]:PORT to [IP]:PORT
-#   postfix/postscreen[PID]: ALLOWLISTED [IP]:PORT
-#   postfix/postscreen[PID]: PASS OLD [IP]:PORT
-#   postfix/smtpd[PID]: connect from HOST[IP]
-#   postfix/smtpd[PID]: disconnect from HOST[IP] ehlo=N quit=N commands=N
-#   postfix/smtpd[PID]: NOQUEUE: lost connection after CONNECT from HOST[IP]
 _POSTFIX_RE = re.compile(
     r"postfix/(\w+)\[\d+\]:\s+(.*)"
 )
@@ -144,9 +149,39 @@ def parse_postfix(message: str) -> tuple[str, dict] | None:
     return None
 
 
-# ── Registry ──
-APP_PARSERS: dict[str, callable] = {
+# ── Builtin registry (referenced by "builtin" manifests) ──
+_BUILTIN_PARSERS: dict[str, callable] = {
     "zimbramon": parse_zimbramon,
-    "fortigate": parse_fortigate,
     "postfix": parse_postfix,
 }
+
+
+def _load_manifests() -> dict[str, callable]:
+    parsers: dict[str, callable] = {}
+    if not _MANIFEST_DIR.is_dir():
+        return parsers
+    for fpath in sorted(_MANIFEST_DIR.glob("*.json")):
+        try:
+            m = json.loads(fpath.read_text())
+        except (json.JSONDecodeError, OSError):
+            continue
+        app_id = m.get("app_id")
+        if not app_id:
+            continue
+        pcfg = m.get("parser", {})
+        ptype = pcfg.get("type", "")
+        if ptype == "kv":
+            parsers[app_id] = _make_kv_parser(
+                app_id,
+                pcfg["match_fields"],
+                pcfg.get("strip_prefix"),
+            )
+        elif ptype == "builtin":
+            name = pcfg.get("name", "")
+            if name in _BUILTIN_PARSERS:
+                parsers[app_id] = _BUILTIN_PARSERS[name]
+    return parsers
+
+
+# ── Public registry ──
+APP_PARSERS: dict[str, callable] = _load_manifests()

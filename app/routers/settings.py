@@ -26,7 +26,10 @@ async def apply_overrides():
         val = await db.get_setting(db_key)
         if val is not None:
             if val_type is bool:
-                val = str(val).lower() == "true"
+                if isinstance(val, str):
+                    val = str(val).lower() in ("true", "t", "1")
+                else:
+                    val = bool(val)
             setattr(config, cfg_attr, val)
 
 

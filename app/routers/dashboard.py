@@ -45,7 +45,7 @@ async def dashboard_history():
     )
     vol_today = q(volume_sql, cutoff_day)
     vol_yesterday = q(
-        "SELECT hour + INTERVAL '24 hours' AS hour, SUM(count)::int AS count "
+        "SELECT hour + INTERVAL '24 hours' AS hour, hour AS orig_hour, SUM(count)::int AS count "
         "FROM log_stats_hourly WHERE hour BETWEEN $1 AND $2 GROUP BY hour ORDER BY hour",
         cutoff_48h, cutoff_day,
     )
@@ -80,8 +80,10 @@ async def dashboard_history():
         cutoff_week,
     )
     week_prev_q = q(
-        "SELECT date_trunc('day', hour + INTERVAL '7 days') AS day, SUM(count)::int AS count "
-        "FROM log_stats_hourly WHERE hour BETWEEN $1 AND $2 GROUP BY day ORDER BY day",
+        "SELECT date_trunc('day', hour + INTERVAL '7 days') AS day, "
+        "MIN(date_trunc('day', hour)) AS orig_day, SUM(count)::int AS count "
+        "FROM log_stats_hourly WHERE hour BETWEEN $1 AND $2 "
+        "GROUP BY date_trunc('day', hour + INTERVAL '7 days') ORDER BY day",
         cutoff_14d, cutoff_week,
     )
     month_q = q(
@@ -90,8 +92,10 @@ async def dashboard_history():
         cutoff_month,
     )
     month_prev_q = q(
-        "SELECT date_trunc('day', hour + INTERVAL '30 days') AS day, SUM(count)::int AS count "
-        "FROM log_stats_hourly WHERE hour BETWEEN $1 AND $2 GROUP BY day ORDER BY day",
+        "SELECT date_trunc('day', hour + INTERVAL '30 days') AS day, "
+        "MIN(date_trunc('day', hour)) AS orig_day, SUM(count)::int AS count "
+        "FROM log_stats_hourly WHERE hour BETWEEN $1 AND $2 "
+        "GROUP BY date_trunc('day', hour + INTERVAL '30 days') ORDER BY day",
         cutoff_60d, cutoff_month,
     )
     anomaly_q = q(
@@ -114,24 +118,6 @@ async def dashboard_history():
      volume_week, volume_week_prev, volume_month, volume_month_prev,
      anomaly_trend) = all_results
 
-
-async def _refresh_top_apps():
-    global _top_apps_cache, _top_apps_cache_ts
-    try:
-        rows = await asyncio.wait_for(
-            db.fetch(
-                "SELECT app_name, COUNT(*)::int AS count "
-                "FROM syslog_messages "
-                "WHERE ts > NOW() - INTERVAL '24 hours' AND app_name IS NOT NULL AND app_name != '-' "
-                "GROUP BY app_name ORDER BY count DESC LIMIT 10"
-            ),
-            timeout=10,
-        )
-        _top_apps_cache = rows
-        _top_apps_cache_ts = time()
-    except Exception:
-        pass
-
     total = sum(r["count"] for r in volume) if volume else 0
 
     # Compute trend forecast (linear regression)
@@ -153,7 +139,9 @@ async def _refresh_top_apps():
         y_next = max(0, round(intercept + slope * n, 1))
         if y_next > 0:
             anomaly_forecast.append({"hour": next_hour, "count": y_next})
-    return {
+
+    top_apps_rows = _top_apps_cache
+    result = {
         "volume": [dict(r) for r in volume],
         "volume_yesterday": [dict(r) for r in volume_yesterday],
         "volume_week": [dict(r) for r in volume_week],
@@ -170,8 +158,26 @@ async def _refresh_top_apps():
     }
     _history_cache = result
     _history_cache_ts = time()
-    _log.info("dashboard_history_done", elapsed_ms=int((time()-t0)*1000))
+    _log.info("dashboard_history_done", elapsed_ms=int((time() - t0) * 1000))
     return result
+
+
+async def _refresh_top_apps():
+    global _top_apps_cache, _top_apps_cache_ts
+    try:
+        rows = await asyncio.wait_for(
+            db.fetch(
+                "SELECT app_name, COUNT(*)::int AS count "
+                "FROM syslog_messages "
+                "WHERE ts > NOW() - INTERVAL '24 hours' AND app_name IS NOT NULL AND app_name != '-' "
+                "GROUP BY app_name ORDER BY count DESC LIMIT 10"
+            ),
+            timeout=10,
+        )
+        _top_apps_cache = rows
+        _top_apps_cache_ts = time()
+    except Exception:
+        pass
 
 
 @router.get("/dashboard/storage")
