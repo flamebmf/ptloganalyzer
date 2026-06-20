@@ -43,6 +43,8 @@ CREATE INDEX IF NOT EXISTS idx_syslog_device_ts ON syslog_messages(device_id, ts
 CREATE INDEX IF NOT EXISTS idx_syslog_device_severity_ts ON syslog_messages(device_id, severity, ts DESC);
 CREATE INDEX IF NOT EXISTS idx_syslog_severity ON syslog_messages(severity);
 CREATE INDEX IF NOT EXISTS idx_syslog_app ON syslog_messages(app_name);
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE INDEX IF NOT EXISTS idx_syslog_message_trgm ON syslog_messages USING GIN (message gin_trgm_ops);
 
 DO $$ DECLARE
     rec record;
@@ -308,6 +310,15 @@ class Database:
                 "ON syslog_messages(app_name, ts DESC)",
                 timeout=300
             )
+            try:
+                await conn.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
+                await conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_syslog_message_trgm "
+                    "ON syslog_messages USING GIN (message gin_trgm_ops)",
+                    timeout=600
+                )
+            except Exception:
+                pass  # pg_trgm not available or GIN on partition not supported
             await conn.execute("ANALYZE log_stats_hourly")
 
             # ── Parse templates ──

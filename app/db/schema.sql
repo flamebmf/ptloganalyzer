@@ -42,6 +42,8 @@ CREATE INDEX IF NOT EXISTS idx_syslog_device_ts ON syslog_messages(device_id, ts
 CREATE INDEX IF NOT EXISTS idx_syslog_device_severity_ts ON syslog_messages(device_id, severity, ts DESC);
 CREATE INDEX IF NOT EXISTS idx_syslog_severity ON syslog_messages(severity);
 CREATE INDEX IF NOT EXISTS idx_syslog_app ON syslog_messages(app_name);
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE INDEX IF NOT EXISTS idx_syslog_message_trgm ON syslog_messages USING GIN (message gin_trgm_ops);
 
 -- ── Partitions (monthly) ──
 -- Create partitions for current and next 3 months
