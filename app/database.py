@@ -290,6 +290,10 @@ class Database:
                 "ON syslog_messages(ts DESC)"
             )
             await conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_syslog_device_ts "
+                "ON syslog_messages(device_id, ts DESC)"
+            )
+            await conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_syslog_app_ts "
                 "ON syslog_messages(app_name, ts DESC)"
             )
