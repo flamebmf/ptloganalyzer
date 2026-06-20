@@ -48,8 +48,6 @@ spec:
     - random_page_cost=1.1
     - -c
     - effective_io_concurrency=200
-    - -c
-    - max_parallel_workers_maintenance=0
     volumeMounts:
     - name: pgdata
       mountPath: /var/lib/postgresql/data

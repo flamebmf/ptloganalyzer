@@ -1038,7 +1038,6 @@ sub deploy_infra {
     '-c', 'maintenance_work_mem=512MB',
     '-c', 'random_page_cost=1.1',
     '-c', 'effective_io_concurrency=200',
-    '-c', 'max_parallel_workers_maintenance=0',
   );
   my $rc = system(@run);
   if ($rc != 0) {
