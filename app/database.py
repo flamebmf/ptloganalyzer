@@ -283,6 +283,8 @@ class Database:
                 "CREATE INDEX IF NOT EXISTS idx_stats_hour_brin "
                 "ON log_stats_hourly USING BRIN (hour) WITH (pages_per_range = 32)"
             )
+            await conn.execute("SET max_parallel_workers = 0")
+            await conn.execute("SET maintenance_work_mem = '64MB'")
             await conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_syslog_app_ts "
                 "ON syslog_messages(app_name, ts DESC)"
