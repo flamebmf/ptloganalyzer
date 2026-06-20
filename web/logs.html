@@ -59,19 +59,21 @@ async function searchLogs(page) {
   var deviceId = document.getElementById('deviceFilter').value;
   var sev = document.getElementById('sevFilter').value;
 
+  var resultsEl = document.getElementById('logResults');
+
   if (_semanticMode) {
-    if (!query) { document.getElementById('logResults').innerHTML = '<div class="empty-state"><p>Введите текст для поиска</p></div>'; document.getElementById('pagination').innerHTML = ''; return; }
+    if (!query) { resultsEl.innerHTML = '<div class="empty-state"><p>Введите текст для поиска</p></div>'; document.getElementById('pagination').innerHTML = ''; return; }
+    showLoading(resultsEl);
     var url = '/api/logs/similar?q=' + encodeURIComponent(query) + '&limit=' + _logPageSize;
     if (deviceId) url += '&device_id=' + deviceId;
     try {
       var data = await apiGet(url);
-      var el = document.getElementById('logResults');
       if (data.items.length === 0) {
-        el.innerHTML = '<div class="empty-state"><div class="icon"><i class="bi bi-search"></i></div><p>Нет результатов</p></div>';
+        resultsEl.innerHTML = '<div class="empty-state"><div class="icon"><i class="bi bi-search"></i></div><p>Нет результатов</p></div>';
         document.getElementById('pagination').innerHTML = '';
         return;
       }
-      el.innerHTML = '<table style="table-layout:auto;width:100%"><thead><tr>'
+      resultsEl.innerHTML = '<table style="table-layout:auto;width:100%"><thead><tr>'
         + '<th style="width:1%">Score</th><th style="white-space:nowrap;width:1%">Time</th><th data-i18n="message" style="width:100%">Сообщение</th>'
         + '</tr></thead><tbody>'
         + data.items.map(function(r) {
@@ -93,17 +95,18 @@ async function searchLogs(page) {
   if (deviceId) url += '&device_id=' + deviceId;
   if (sev) url += '&severity=' + sev;
 
+  showLoading(resultsEl);
+
   try {
     var data = await apiGet(url);
     _logTotal = data.total || data.items.length;
-    var el = document.getElementById('logResults');
     if (data.items.length === 0) {
-      el.innerHTML = '<div class="empty-state"><div class="icon"><i class="bi bi-search"></i></div><p data-i18n="no_data">Нет результатов</p></div>';
+      resultsEl.innerHTML = '<div class="empty-state"><div class="icon"><i class="bi bi-search"></i></div><p data-i18n="no_data">Нет результатов</p></div>';
       document.getElementById('pagination').innerHTML = '';
       return;
     }
 
-    el.innerHTML = '<table style="table-layout:auto;width:100%"><thead><tr>'
+    resultsEl.innerHTML = '<table style="table-layout:auto;width:100%"><thead><tr>'
       + '<th style="white-space:nowrap;width:1%">Time</th><th style="white-space:nowrap;width:1%">Host</th><th style="width:1%">Sev</th><th style="white-space:nowrap;width:1%">App</th><th data-i18n="message" style="width:100%">Сообщение</th>'
       + '</tr></thead><tbody>'
       + data.items.map(function(l) {

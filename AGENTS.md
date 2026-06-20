@@ -4,7 +4,50 @@
 - Always propose a plan first and get user confirmation before making code changes.
 - Do not edit files without agreement on the approach.
 
-## Project Context (as of 2026-06-19)
+## Project Context (as of 2026-06-20, session about to end)
+
+### Active Problems (current session)
+1. **Severity=0 (EMERGENCY) timeout** — `search_logs` with `severity=0` and `device_id=36` times out because existing `idx_syslog_device_ts(device_id, ts DESC)` scans ALL 1.7M rows for device_id to find severity matches; with zero matches in 48h window, LIMIT 20 doesn't help.
+   - Fix: added `idx_syslog_device_severity_ts ON syslog_messages(device_id, severity, ts DESC)` in `_ensure_indexes`, `SCHEMA_SQL`, and `schema.sql`
+   - User can create index manually via podman exec without restart.
+
+2. **`_ensure_indexes` crash on startup** — `conn._command_timeout = 300` fails with `'PoolConnectionProxy' object has no attribute '_command_timeout'` in this asyncpg version.
+   - Fix: replaced with `timeout=300` param on each slow `conn.execute()` call (backfill, GIN indexes, big B-tree indexes)
+   - Pool `command_timeout` increased 30→60
+
+3. **No visual feedback on logs search** — changing severity/search/filter in logs.html and device.html didn't show loading state.
+   - Fix: added `showLoading(el)` in `app.js` (uses existing `.modal-loading` / `.spinner` CSS classes)
+   - Integrated into `searchLogs()` (logs.html) and `loadDeviceLogs()` (device.html) before each fetch
+
+### Changes NOT YET COMMITTED
+All edits from this session are uncommitted. Need `git add -A && git commit -m "..." && git push` before next session.
+
+Changed files:
+- `app/database.py` — `_ensure_indexes`: removed `conn._command_timeout`, added `timeout=300` to slow execute calls; added `idx_syslog_device_severity_ts` index; command_timeout 30→60
+- `app/db/schema.sql` — added `idx_syslog_device_severity_ts`
+- `web/js/app.js` — added `showLoading(el)` function
+- `web/logs.html` — `searchLogs()`: added `showLoading()`, fixed `el`→`resultsEl`
+- `web/device.html` — `loadDeviceLogs()`: added `showLoading()`
+
+### Known Server Issues
+- App runs in podman pod. Containers: `ptlog-app-backend`, `ptlog-collector-collector`, `ptlog-ai-ai-worker`, `ptlog-infra-postgres`
+- Current running code doesn't have the `_ensure_indexes` timeout fix → app starts but _ensure_indexes may still timeout on slow DDL
+- `pid 1` in app container may exit on crash (need `Restart=always` or pod auto-restart)
+- Server has 65M rows in syslog_messages; index creation on new columns takes 2-10 min
+
+### Index Strategy for Log Queries
+- `idx_syslog_device_ts(device_id, ts DESC)` — fast for device log list without severity filter
+- `idx_syslog_device_severity_ts(device_id, severity, ts DESC)` — fast for device + severity filter (NEW, NOT YET CREATED ON SERVER)
+- `idx_syslog_ts_desc(ts DESC)` — general 48h time-bound searches
+- `idx_syslog_app_ts(app_name, ts DESC)` — app-specific queries
+
+### How to Create Missing Index on Server (without app restart)
+```bash
+podman exec -it ptlog-infra-postgres psql -U ptlog -d ptlog -c "
+CREATE INDEX IF NOT EXISTS idx_syslog_device_severity_ts
+ON syslog_messages(device_id, severity, ts DESC);
+"
+```
 
 ### Pod/Container Names
 - `ptlog-app` (backend) — API сервер (uvicorn, порт 8000)
@@ -27,79 +70,10 @@
 - AI worker раз в 5 мин проверяет `ai_provider`, пересоздаёт сервисы без рестарта
 - `apply_overrides()` читает runtime-настройки из БД в config при старте web app
 
-### Известные проблемы
-- IAP "2026" год как hostname — лечится шаблоном `aruba_iap`
-- `green-mkt1` дубликат (ids 33, 43) — один hostname, разные source IP
-- IP как hostname у SIP/embedded устройств
-
 ### AI Provider Timeouts
 - Per-provider timeout в config.yaml: `ai.openai.timeout`, `ai.ollama.timeout`, `ai.routerai.timeout`
 - Дефолты: OpenAI 180, Ollama 600, RouterAI 180
 - Меняется без рестарта — `_check_config` подхватывает новое значение из БД и пересоздаёт сервисы
-
-### Model Lists (config.yaml)
-- Список моделей для каждого провайдера — в `config.yaml` секция `ai.providers`
-- Генерируется `generate_config.pl`, читается `config.py` → `self.providers`
-- `GET /api/ai-config` отдаёт `config.providers` (не хардкод в Python)
-- `registry.py` удалён — больше нет жёсткой привязки моделей в коде
-- Для добавления модели достаточно добавить в `ai.providers` в `generate_config.pl`, перегенерить config.yaml и передеплоить
-
-### YAML::XS everywhere
-- `generate_config.pl` и `setup.pl` переписаны на `YAML::XS` вместо самописного `yaml()` sub и regex-парсинга
-- Установлен пакет `perl-YAML-LibYAML` на сервере и локально
-- `setup.pl:read_deploy_yaml()` читает config.yaml через `YAML::XS::LoadFile`, без regex
-
-### Timeout & Error Logging
-- Все провайдеры ловят `httpx.ReadTimeout` в `chat()` и поднимают `TimeoutError` с указанием таймаута
-- `device_name` добавлен во все логи `summary_failed`, `daily_summary_failed`, `ai_anomaly_detection_failed`
-- Scheduler передаёт `hostname` из списка устройств
-
-### AI Language Support
-- `app_settings(ai_language)` — `ru` или `en`, меняется в UI (settings.html)
-- AI worker раз в 5 мин проверяет `ai_language`, пересоздаёт сервисы
-- Все промпты в `app/ai/prompts.py`: `ANOMALY_LANG_PROMPTS`, `SUMMARIZE_LANG_PROMPTS`, `RECOMMEND_PROMPT`
-- Провайдеры импортируют промпты из `prompts.py`, не содержат inline-текстов
-
-### Dashboard Performance
-- 10 SQL запросов `/api/dashboard/history` выполняются параллельно через `asyncio.gather`
-- `/api/dashboard/storage` и `top_apps` кешируются в памяти на 5 минут (in-memory cache, module-level переменные)
-- Добавлены индексы: `idx_stats_hour` ON `log_stats_hourly(hour)`, `idx_stats_hour_severity` ON `log_stats_hourly(hour, severity)`
-- `ANALYZE log_stats_hourly` запускается после создания индексов в `_ensure_indexes()`
-
-### Anomaly Display
-- Статистические детекторы включают `MAX(id) AS sample_id` в SQL — #ID ссылается на конкретный лог
-- #ID кликабельны в заголовке и описании аномалии (`convertLogIds(text, deviceId)` в `app.js`)
-- Модальное окно лога поддерживает `?device_id=N` — жёлтый баннер при несовпадении device
-- `d.name` возвращается в `list_anomalies` наряду с `d.hostname`
-- Окно мержа аномалий: 48ч (было 24ч), `resolved_at` сбрасывается при мерже
-- Промпт аномалий: "НЕ используй #ID как заголовок", "Цитаты из логов оставляй в оригинале"
-
-### DNS / Container Networking
-- DB host: `host.containers.internal` (не `ptlog-infra`) — обход aardvark-dns
-- `hostPort: 5432` добавлен в `infra.kube`
-
-### Setup.pl
-- `$FORCE` flag: `--update=all` без интерактивных промптов
-- `--update` (bare) — интерактивный: выбирает компоненты из `%comp`
-- `read_deploy_yaml()` через `YAML::XS::LoadFile`
-
-### Charts (web/js/charts.js)
-- W2W/M2M: `type: 'area'` (было `bar`), градиентная заливка, smooth stroke
-- Аномалии: линия тренда (линейная регрессия) поверх столбцов + прогноз на следующий час
-
-### App Parsers (app/collector/app_parsers.py)
-- `APP_PARSERS` — registry: `app_id → parse_fn(message) → (app_id, fields) | None`
-- Парсеры работают на `message` тексте, не затрагивают основной парсинг syslog
-- Первый парсер: `zimbramon` — извлекает CSV-поля из Carbonio/Zimbra zmstat
-- `fortigate` — извлекает все key=value поля из FortiOS логов (type, subtype, srcip, dstip, app, sentbyte, rcvdbyte, duration, etc.) — требует BOTH type= AND logid=
-- `postfix` — извлекает postfix-транзакции (process, event, src/dst ip:port, ehlo/quit/commands)
-- `app_metrics(device_id, app_id, ts, fields JSONB)` — структурированные данные приложений (непартицированная)
-- `device_apps(device_id, app_id, enabled)` — какие приложения ВЫКЛЮЧЕНЫ для устройства
-- По умолчанию все новые парсеры включены для всех устройств (если нет явной записи в device_apps)
-- Коллектор: сохраняет лог как есть, потом проверяет включённые приложения для device,
-  запускает парсеры, пишет результат в `app_metrics`
-- API: `GET /api/app-metrics/list`, `/series`, `/stats` (dim+filter+metric агрегация), `GET/PATCH /api/device-apps/:id`
-- UI: карточка App metrics на device.html, для fortigate — 7 панелей (Source/Dest IPs, Apps, Interfaces, Actions, Threats, Policies)
 
 ### Device Page (web/device.html)
 - Аномалии: кликабельные строки открывают detail-модалку (title, severity, time, description)
@@ -108,22 +82,6 @@
 - App metrics карточка: скрыта если нет данных; fortigate — traffic+security панели
 - Графики: Volume (area chart) + Severity (donut) с заголовками
 - Header stats: компактно, числа с toLocaleString
-
-### Dashboard Performance (known issues)
-- `/api/dashboard/history`: 10 запросов параллельно через `asyncio.gather`, кеш 5 мин
-- `top_apps` — фоновый таск, не блокирует дашборд
-- `log_stats_hourly` — 5000 строк, индекс по hour, EXPLAIN=0.5ms
-- PostgreSQL: shared_buffers=2GB, synchronous_commit=off, max_wal_size=8GB
-- `log_stats_daily` — daily rollup, 90-day retention на hourly
-- BRIN индекс на log_stats_hourly(hour) для долгосрочных сканов
-- Проблема: дашборд грузится ~20с несмотря на SQL 0.5ms — причина не найдена
-- Добавлены тайминг-логи `dashboard_history_done` — ждут деплоя
-
-### FortiGate API
-- `GET /api/app-metrics/stats`: агрегация по dimension (srcip,dstip,app,srcintf,action,type,etc.)
-  + опциональный `filter=action:deny` и `metric=sentbyte`
-- Исправлен баг: `fields ? key` → `jsonb_exists(fields, key)` (asyncpg конфликт)
-- Исправлен баг: `ORDER BY sentbyte` → `ORDER BY value` (alias колонки)
 
 ### PostgreSQL Config (infra.kube)
 - `shared_buffers=2GB`, `effective_cache_size=6GB`, `synchronous_commit=off`

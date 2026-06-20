@@ -25,6 +25,10 @@ function severityBadge(sev) {
   return `<span class="severity-badge ${cls}" title="${cls}"></span>`;
 }
 
+function showLoading(el) {
+  el.innerHTML = '<div class="modal-loading" style="padding:20px"><div class="spinner"></div><span style="color:var(--pt-muted);font-size:.8rem">Загрузка...</span></div>';
+}
+
 async function apiGet(url) {
   const r = await fetch(url);
   if (!r.ok) throw new Error(`HTTP ${r.status}`);

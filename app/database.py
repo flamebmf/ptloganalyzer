@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS syslog_messages (
 ) PARTITION BY RANGE (ts);
 CREATE TABLE IF NOT EXISTS syslog_messages_default PARTITION OF syslog_messages DEFAULT;
 CREATE INDEX IF NOT EXISTS idx_syslog_device_ts ON syslog_messages(device_id, ts DESC);
+CREATE INDEX IF NOT EXISTS idx_syslog_device_severity_ts ON syslog_messages(device_id, severity, ts DESC);
 CREATE INDEX IF NOT EXISTS idx_syslog_severity ON syslog_messages(severity);
 CREATE INDEX IF NOT EXISTS idx_syslog_app ON syslog_messages(app_name);
 
@@ -102,7 +103,7 @@ class Database:
             dsn=self._dsn,
             min_size=self._pool_min,
             max_size=self._pool_max,
-            command_timeout=30,
+            command_timeout=60,
         )
         await self._ensure_schema()
         await self._ensure_indexes()
@@ -192,7 +193,7 @@ class Database:
     async def _ensure_indexes(self):
         conn = await self.pool.acquire()
         try:
-            await conn.execute("SET statement_timeout = '300s'")
+            await conn.execute("SET statement_timeout = '300s'", timeout=300)
             # Remove duplicate IPs with cascade, keep lowest id
             dups = await conn.fetch(
                 "SELECT a.id FROM devices a JOIN devices b ON a.ip = b.ip WHERE a.id > b.id AND a.ip IS NOT NULL"
@@ -260,16 +261,18 @@ class Database:
                     INSERT INTO device_last_seen (device_id, ts)
                     SELECT device_id, MAX(ts) FROM syslog_messages GROUP BY device_id
                     ON CONFLICT (device_id) DO NOTHING
-                """)
+                """, timeout=300)
                 log.info("device_last_seen_backfilled")
             try:
                 await conn.execute(
                     "CREATE INDEX IF NOT EXISTS idx_syslog_linked_ips "
-                    "ON syslog_messages USING GIN (linked_ips)"
+                    "ON syslog_messages USING GIN (linked_ips)",
+                    timeout=300
                 )
                 await conn.execute(
                     "CREATE INDEX IF NOT EXISTS idx_syslog_linked_names "
-                    "ON syslog_messages USING GIN (linked_names)"
+                    "ON syslog_messages USING GIN (linked_names)",
+                    timeout=300
                 )
             except Exception:
                 pass  # GIN on partitioned table needs PG14+
@@ -287,15 +290,23 @@ class Database:
             )
             await conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_syslog_ts_desc "
-                "ON syslog_messages(ts DESC)"
+                "ON syslog_messages(ts DESC)",
+                timeout=300
             )
             await conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_syslog_device_ts "
-                "ON syslog_messages(device_id, ts DESC)"
+                "ON syslog_messages(device_id, ts DESC)",
+                timeout=300
+            )
+            await conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_syslog_device_severity_ts "
+                "ON syslog_messages(device_id, severity, ts DESC)",
+                timeout=300
             )
             await conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_syslog_app_ts "
-                "ON syslog_messages(app_name, ts DESC)"
+                "ON syslog_messages(app_name, ts DESC)",
+                timeout=300
             )
             await conn.execute("ANALYZE log_stats_hourly")
 

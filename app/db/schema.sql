@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS syslog_messages_default
     PARTITION OF syslog_messages DEFAULT;
 
 CREATE INDEX IF NOT EXISTS idx_syslog_device_ts ON syslog_messages(device_id, ts DESC);
+CREATE INDEX IF NOT EXISTS idx_syslog_device_severity_ts ON syslog_messages(device_id, severity, ts DESC);
 CREATE INDEX IF NOT EXISTS idx_syslog_severity ON syslog_messages(severity);
 CREATE INDEX IF NOT EXISTS idx_syslog_app ON syslog_messages(app_name);
 

@@ -236,9 +236,11 @@ function toggleSemantic() {
 async function loadDeviceLogs() {
   if (!deviceId) return;
   var query = document.getElementById('logSearch').value;
+  var listEl = document.getElementById('logList');
 
   if (_semanticMode) {
     if (!query) { _allLogs = []; renderLogList(); return; }
+    showLoading(listEl);
     var url = '/api/logs/similar?q=' + encodeURIComponent(query) + '&device_id=' + deviceId + '&limit=20';
     try {
       var data = await apiGet(url);
@@ -255,6 +257,7 @@ async function loadDeviceLogs() {
   if (query) url += '&query=' + encodeURIComponent(query);
   if (sev) url += '&severity=' + sev;
 
+  showLoading(listEl);
   try {
     var data = await apiGet(url);
     renderLogs(data);
