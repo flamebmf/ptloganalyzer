@@ -103,7 +103,7 @@ class Database:
             dsn=self._dsn,
             min_size=self._pool_min,
             max_size=self._pool_max,
-            command_timeout=60,
+            command_timeout=120,
         )
         await self._ensure_schema()
         await self._ensure_indexes()
@@ -430,14 +430,16 @@ class Database:
         async with self.pool.acquire() as conn:
             return await conn.executemany(query, args)
 
-    async def fetch(self, query: str, *args):
-        return await self.pool.fetch(query, *args)
+    async def fetch(self, query: str, *args, timeout=None):
+        async with self.pool.acquire() as conn:
+            return await conn.fetch(query, *args, timeout=timeout)
 
     async def fetchrow(self, query: str, *args):
         return await self.pool.fetchrow(query, *args)
 
-    async def fetchval(self, query: str, *args):
-        return await self.pool.fetchval(query, *args)
+    async def fetchval(self, query: str, *args, timeout=None):
+        async with self.pool.acquire() as conn:
+            return await conn.fetchval(query, *args, timeout=timeout)
 
     # ── Devices ──
 
@@ -582,7 +584,8 @@ class Database:
             )
         else:
             total = await self.fetchval(
-                f"SELECT COUNT(*) FROM syslog_messages WHERE {where_sql}", *args
+                f"SELECT COUNT(*) FROM syslog_messages WHERE {where_sql}", *args,
+                timeout=180
             )
         rows = await self.fetch(
             f"SELECT id, device_id, ts, facility, severity, app_name, message, "
@@ -590,6 +593,7 @@ class Database:
             f"FROM syslog_messages WHERE {where_sql} "
             f"ORDER BY ts DESC LIMIT ${i} OFFSET ${i+1}",
             *args, limit, offset,
+            timeout=180 if query else None,
         )
         return {"items": [dict(r) for r in rows], "total": total or 0,
                 "limit": limit, "offset": offset}
