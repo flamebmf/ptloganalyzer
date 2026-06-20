@@ -1006,7 +1006,7 @@ sub play_kube {
   $cmd = "sed 's/__DB_PASSWORD__/$pw/g' '$kube'" if $pw;
   $cmd .= " | sed 's/__OPENAI_API_KEY__/$key/g'" if $key;
   $cmd .= " | sed 's/__ROUTERAI_API_KEY__/$rkey/g'" if $rkey;
-  $cmd .= " | podman play kube --network ptlog -";
+  $cmd .= " | podman play kube --shm-size=512M --network ptlog -";
   system("$cmd 2>/dev/null");
 }
 
