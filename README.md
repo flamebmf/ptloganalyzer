@@ -59,13 +59,14 @@ AI Providers (external): Ollama · OpenAI · RouterAI
 - Batch inserts with configurable size/interval
 - Device identification by source IP (not hostname)
 
-### Device-Specific Parsers
+### Device-Specific Parse Templates
 - **`default`** — Universal RFC 5424/3164 parser
 - **`rfc3164_tag`** — RFC 3164 with structured app_name[pid] extraction
 - **`aruba_iap`** — Aruba Instant Access Point parser (extracts AP name from message body)
-- Extensible via `PARSERS` dict in `parser.py` — add custom regex templates per device
+- Templates stored in `parse_templates` DB table, assigned per device in UI (settings page)
+- Add new templates via `INSERT INTO parse_templates` — no Python code changes needed
 
-### Application-Level Parsers (Plugin System)
+### Application-Level Metric Parsers (Plugin System)
 - **FortiGate** — extracts key=value fields (srcip, dstip, app, sentbyte, rcvdbyte, action, type, attack) with separate traffic and security panels
 - **Postfix** — extracts SMTP transactions (process, event, client/dest IPs, ehlo/quit/commands)
 - **Zimbra/Carbonio** — extracts CSV zmstat metrics (count, latency, queue size)
@@ -329,13 +330,21 @@ Single source of truth: **`VERSION`** file. The version auto-propagates to:
 - HTML cache-busting query strings (`?v=__APP_VERSION__`, substituted by `setup.pl`)
 - Docker image labels (via `ARG VERSION`)
 
-### Adding a New App Parser (Plugin System)
+### Adding a New Device Parse Template
+
+1. Insert a row into `parse_templates` with `parser_type` (e.g. `'default'`, `'rfc3164_tag'`, `'aruba_iap'`)
+2. Optionally store regex config in the `config` JSONB column
+3. Assign the template to a device via UI (`settings.html` → device card → template dropdown)
+4. The collector caches templates by device IP and applies them at parse time
+5. No Python code changes needed — templates are stored in DB
+
+### Adding a New App Metrics Parser (Plugin System)
 
 1. Create `app/manifests/<app_id>.json` with parser rules and panel definitions
 2. For KV parsers: specify `kv_delimiter`, `field_delimiter`, and `require_keys` — the factory handles extraction
 3. For custom logic: implement a parse function in `app/collector/app_parsers.py` and reference it in the manifest
 4. Define UI panels: `dimension`, `filter`, `metric` for the stats API — panels auto-appear on device.html
-5. No Python router or HTML changes needed
+5. No Python router or HTML changes needed — create a manifest file only
 
 ### Adding a New AI Provider
 
