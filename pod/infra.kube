@@ -83,7 +83,6 @@ spec:
   - name: dshm
     emptyDir:
       medium: Memory
-      sizeLimit: 1Gi
   - name: pgdata
     hostPath:
       path: __DATA_DIR__/data/pgdata
