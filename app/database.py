@@ -284,8 +284,8 @@ class Database:
                 "ON log_stats_hourly USING BRIN (hour) WITH (pages_per_range = 32)"
             )
             await conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_stats_hour_app "
-                "ON log_stats_hourly(app_name)"
+                "CREATE INDEX IF NOT EXISTS idx_syslog_app_ts "
+                "ON syslog_messages(app_name, ts DESC)"
             )
             await conn.execute("ANALYZE log_stats_hourly")
 

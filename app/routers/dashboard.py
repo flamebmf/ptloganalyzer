@@ -167,9 +167,9 @@ async def _refresh_top_apps():
     try:
         rows = await asyncio.wait_for(
             db.fetch(
-                "SELECT app_name, SUM(cnt)::int AS count "
-                "FROM log_stats_hourly "
-                "WHERE hour > NOW() - INTERVAL '24 hours' AND app_name IS NOT NULL AND app_name != '-' "
+                "SELECT app_name, COUNT(*)::int AS count "
+                "FROM syslog_messages "
+                "WHERE ts > NOW() - INTERVAL '24 hours' AND app_name IS NOT NULL AND app_name != '-' "
                 "GROUP BY app_name ORDER BY count DESC LIMIT 10"
             ),
             timeout=10,
