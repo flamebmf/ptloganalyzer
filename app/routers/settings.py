@@ -21,6 +21,12 @@ async def apply_overrides():
         "routerai_url": ("routerai_base_url", str),
         "summary_enabled": ("summary_enabled", bool),
         "daily_summary_enabled": ("daily_summary_enabled", bool),
+        "summarization_provider": ("summarization_provider", str),
+        "summarization_model": ("summarization_model", str),
+        "anomaly_detection_provider": ("anomaly_detection_provider", str),
+        "anomaly_detection_model": ("anomaly_detection_model", str),
+        "embeddings_provider": ("embeddings_provider", str),
+        "embeddings_model": ("embeddings_model", str),
     }
     for db_key, (cfg_attr, val_type) in SETTING_MAP.items():
         val = await db.get_setting(db_key)
