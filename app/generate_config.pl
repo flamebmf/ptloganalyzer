@@ -67,7 +67,7 @@ $cfg{ai} = {
     chat_model     => $ENV{AI_OLLAMA_MODEL}     // 'llama3.2:1b',
     embedding_model => $ENV{AI_OLLAMA_EMBED}  // 'nomic-embed-text',
     embedding_dims => 768,
-    timeout        => $ENV{AI_OLLAMA_TIMEOUT}  // 600,
+    timeout        => $ENV{AI_OLLAMA_TIMEOUT}  // 1200,
   },
   routerai => {
     api_key        => '${ROUTERAI_API_KEY}',
