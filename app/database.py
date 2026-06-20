@@ -286,6 +286,10 @@ class Database:
                 "ON log_stats_hourly USING BRIN (hour) WITH (pages_per_range = 32)"
             )
             await conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_syslog_ts_desc "
+                "ON syslog_messages(ts DESC)"
+            )
+            await conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_syslog_app_ts "
                 "ON syslog_messages(app_name, ts DESC)"
             )
@@ -543,9 +547,8 @@ class Database:
             where.append(f"facility = ${i}"); args.append(facility); i += 1
         if query:
             where.append(f"message ILIKE ${i}"); args.append(f"%{query}%"); i += 1
-        # Default time window to avoid full table scan
-        if not query:
-            where.append(f"ts > NOW() - INTERVAL '48 hours'")
+        # Always bound by time to avoid full table scan
+        where.append(f"ts > NOW() - INTERVAL '48 hours'")
         where_sql = " AND ".join(where) if where else "TRUE"
 
         # Use log_stats_hourly for count when no full-text search
