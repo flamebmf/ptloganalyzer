@@ -34,7 +34,7 @@ class SyslogServer:
             dsn=dsn,
             min_size=2,
             max_size=5,
-            command_timeout=10,
+            command_timeout=60,
         )
 
         # Start batch flusher

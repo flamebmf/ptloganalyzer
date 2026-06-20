@@ -317,9 +317,9 @@ class Database:
             try:
                 await conn.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
                 await conn.execute(
-                    "CREATE INDEX IF NOT EXISTS idx_syslog_message_trgm "
+                    "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_syslog_message_trgm "
                     "ON syslog_messages USING GIN (message gin_trgm_ops)",
-                    timeout=600
+                    timeout=900
                 )
             except Exception:
                 pass  # pg_trgm not available or GIN on partition not supported
