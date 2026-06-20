@@ -995,7 +995,60 @@ sub pull_images {
 }
 
 # ──────────────────────────────────────────────
-# Deploy pods
+# Deploy infra pod with shm-size (sync with pod/infra.kube)
+# ──────────────────────────────────────────────
+sub deploy_infra {
+  my $pod_dir = shift;
+  my $pod_name = 'ptlog-infra';
+  my $ctr_name = 'ptlog-infra-postgres';
+  my $pw = $db{pass} // 'ptlog';
+  my $data_dir = $INSTALL_DIR;
+
+  system("podman pod stop $pod_name 2>/dev/null");
+  system("podman pod rm $pod_name 2>/dev/null");
+
+  info "Создание pod $pod_name с --shm-size=1G...";
+  if (system('podman', 'pod', 'create', '--shm-size=1G', '--name', $pod_name, '--network', 'ptlog', '-p', '5432:5432') != 0) {
+    warn_msg "Не удалось создать pod $pod_name";
+    return;
+  }
+
+  info "Запуск PostgreSQL в $pod_name...";
+  my @run = (
+    'podman', 'run', '-d',
+    '--pod', $pod_name,
+    '--name', $ctr_name,
+    '--restart=always',
+    '-e', 'POSTGRES_DB=ptloganalyzer',
+    '-e', 'POSTGRES_USER=ptlog',
+    '-e', "POSTGRES_PASSWORD=$pw",
+    '-e', 'POSTGRES_INITDB_ARGS=--encoding=UTF-8 --lc-collate=C --lc-ctype=C',
+    '-v', "$data_dir/data/pgdata:/var/lib/postgresql/data",
+    '-v', "$data_dir/initdb:/docker-entrypoint-initdb.d",
+    'docker.io/pgvector/pgvector:pg17',
+    'postgres',
+    '-c', 'shared_buffers=2GB',
+    '-c', 'effective_cache_size=6GB',
+    '-c', 'max_wal_size=8GB',
+    '-c', 'checkpoint_timeout=10min',
+    '-c', 'checkpoint_completion_target=0.9',
+    '-c', 'synchronous_commit=off',
+    '-c', 'wal_buffers=64MB',
+    '-c', 'work_mem=64MB',
+    '-c', 'maintenance_work_mem=512MB',
+    '-c', 'random_page_cost=1.1',
+    '-c', 'effective_io_concurrency=200',
+    '-c', 'max_parallel_workers_maintenance=0',
+  );
+  my $rc = system(@run);
+  if ($rc != 0) {
+    warn_msg "deploy_infra вернула код $rc";
+    system("podman pod rm $pod_name 2>/dev/null");
+  }
+}
+
+# ──────────────────────────────────────────────
+# Deploy pods (play kube for non-infra)
 # ──────────────────────────────────────────────
 sub play_kube {
   my $kube = shift;
@@ -1026,24 +1079,42 @@ sub deploy {
 
   for my $comp (qw(infra collector app ai web)) {
     next unless $comp{$comp};
-    my $kube = "$pod_dir/$comp.kube";
-    next unless -f $kube;
 
-    my $pod_name = "ptlog-$comp";
-    if (capture("podman pod exists $pod_name 2>/dev/null && echo 1")) {
-      my $recreate = $FORCE ? 'y' : prompt("Pod $pod_name уже существует. Пересоздать? [y/N]: ", 'n');
-      if ($recreate =~ /^(y|yes|д|да)$/i) {
-        system("podman pod stop $pod_name 2>/dev/null");
-        system("podman pod rm $pod_name 2>/dev/null");
-        play_kube($kube);
-        ok "$comp развёрнут";
+    if ($comp eq 'infra') {
+      my $pod_name = 'ptlog-infra';
+      if (capture("podman pod exists $pod_name 2>/dev/null && echo 1")) {
+        my $recreate = $FORCE ? 'y' : prompt("Pod $pod_name уже существует. Пересоздать? [y/N]: ", 'n');
+        if ($recreate =~ /^(y|yes|д|да)$/i) {
+          deploy_infra($pod_dir);
+          ok "infra развёрнут";
+        } else {
+          ok "infra пропущен (существующий)";
+          next;
+        }
       } else {
-        ok "$comp пропущен (существующий)";
-        next;
+        deploy_infra($pod_dir);
+        ok "infra развёрнут";
       }
     } else {
-      play_kube($kube);
-      ok "$comp развёрнут";
+      my $kube = "$pod_dir/$comp.kube";
+      next unless -f $kube;
+
+      my $pod_name = "ptlog-$comp";
+      if (capture("podman pod exists $pod_name 2>/dev/null && echo 1")) {
+        my $recreate = $FORCE ? 'y' : prompt("Pod $pod_name уже существует. Пересоздать? [y/N]: ", 'n');
+        if ($recreate =~ /^(y|yes|д|да)$/i) {
+          system("podman pod stop $pod_name 2>/dev/null");
+          system("podman pod rm $pod_name 2>/dev/null");
+          play_kube($kube);
+          ok "$comp развёрнут";
+        } else {
+          ok "$comp пропущен (существующий)";
+          next;
+        }
+      } else {
+        play_kube($kube);
+        ok "$comp развёрнут";
+      }
     }
 
     # Password sync after infra deploy
