@@ -1007,7 +1007,9 @@ sub play_kube {
   $cmd .= " | sed 's/__OPENAI_API_KEY__/$key/g'" if $key;
   $cmd .= " | sed 's/__ROUTERAI_API_KEY__/$rkey/g'" if $rkey;
   $cmd .= " | podman play kube --shm-size=1G --network ptlog -";
-  system("$cmd 2>/dev/null");
+  info "Выполняю: $cmd";
+  my $rc = system("$cmd 2>&1");
+  if ($rc != 0) { warn_msg "play_kube вернул код $rc" }
 }
 
 sub deploy {
