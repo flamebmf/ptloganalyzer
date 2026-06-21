@@ -78,10 +78,10 @@ async function searchLogs(page) {
         + '</tr></thead><tbody>'
         + data.items.map(function(r) {
           var score = r.score ? (r.score*100).toFixed(0) + '%' : '-';
-          return '<tr onclick="location.href=\'#device.html?id=' + r.device_id + '\'" style="cursor:pointer">'
-            + '<td style="color:var(--pt-accent);white-space:nowrap">' + score + '</td>'
-            + '<td style="white-space:nowrap">' + formatTime(r.ts) + '</td>'
-            + '<td style="overflow:hidden;text-overflow:ellipsis">' + (r.snippet || r.message) + '</td>'
+          return '<tr>'
+            + '<td style="color:var(--pt-accent);white-space:nowrap;cursor:pointer" onclick="location.href=\'#device.html?id=' + r.device_id + '\'">' + score + '</td>'
+            + '<td style="white-space:nowrap;cursor:pointer" onclick="openLogModal(' + r.log_id + ',' + r.device_id + ')">' + formatTime(r.ts) + '</td>'
+            + '<td style="overflow:hidden;text-overflow:ellipsis;cursor:pointer" onclick="openLogModal(' + r.log_id + ',' + r.device_id + ')">' + (r.snippet || r.message) + '</td>'
             + '</tr>';
         }).join('')
         + '</tbody></table>';
@@ -110,12 +110,12 @@ async function searchLogs(page) {
       + '<th style="white-space:nowrap;width:1%">Time</th><th style="white-space:nowrap;width:1%">Host</th><th style="width:1%">Sev</th><th style="white-space:nowrap;width:1%">App</th><th data-i18n="message" style="width:100%">Сообщение</th>'
       + '</tr></thead><tbody>'
       + data.items.map(function(l) {
-        return '<tr onclick="location.href=\'#device.html?id=' + l.device_id + '\'" style="cursor:pointer">'
-          + '<td style="white-space:nowrap">' + formatTime(l.ts) + '</td>'
-          + '<td style="white-space:nowrap">' + (_deviceMap[l.device_id] || '#' + l.device_id) + '</td>'
-          + '<td>' + severityBadge(l.severity) + '</td>'
-          + '<td style="white-space:nowrap">' + (l.app_name || '-') + '</td>'
-          + '<td style="overflow:hidden;text-overflow:ellipsis">' + l.message + '</td>'
+        return '<tr>'
+          + '<td style="white-space:nowrap;cursor:pointer" onclick="openLogModal(' + l.id + ',' + l.device_id + ')">' + formatTime(l.ts) + '</td>'
+          + '<td style="white-space:nowrap;cursor:pointer" onclick="location.href=\'#device.html?id=' + l.device_id + '\'">' + (_deviceMap[l.device_id] || '#' + l.device_id) + '</td>'
+          + '<td style="cursor:pointer" onclick="openLogModal(' + l.id + ',' + l.device_id + ')">' + severityBadge(l.severity) + '</td>'
+          + '<td style="white-space:nowrap;cursor:pointer" onclick="location.href=\'#device.html?id=' + l.device_id + '\'">' + (l.app_name || '-') + '</td>'
+          + '<td style="overflow:hidden;text-overflow:ellipsis;cursor:pointer" onclick="openLogModal(' + l.id + ',' + l.device_id + ')">' + l.message + '</td>'
           + '</tr>';
       }).join('')
       + '</tbody></table>';
