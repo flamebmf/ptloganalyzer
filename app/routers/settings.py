@@ -50,12 +50,6 @@ class SettingsUpdate(BaseModel):
     routerai_url: str | None = None
     summary_enabled: bool | None = None
     daily_summary_enabled: bool | None = None
-    summarization_provider: str | None = None
-    summarization_model: str | None = None
-    anomaly_detection_provider: str | None = None
-    anomaly_detection_model: str | None = None
-    embeddings_provider: str | None = None
-    embeddings_model: str | None = None
 
 
 @router.get("/settings")
@@ -113,13 +107,6 @@ async def update_settings(data: SettingsUpdate):
     if changed:
         for k, v in changed.items():
             await db.set_setting(k, v)
-    for task_attr in ("summarization_provider", "summarization_model",
-                       "anomaly_detection_provider", "anomaly_detection_model",
-                       "embeddings_provider", "embeddings_model"):
-        val = getattr(data, task_attr, None)
-        if val:
-            setattr(config, task_attr, val)
-            changed[task_attr] = val
     if data.chat_model:
         provider = config.ai_provider
         key = f"{provider}_chat_model"
