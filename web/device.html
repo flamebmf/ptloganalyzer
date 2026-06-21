@@ -495,7 +495,7 @@ async function initAppMetrics() {
       + apps.map(function(a) { return '<option value="' + a + '">' + a + '</option>'; }).join('');
     sel.value = apps[0];
     loadAppMetrics();
-  } catch(err) { card.hidden = true; }
+  } catch(err) { if (card) card.hidden = true; }
 }
 
 async function loadAppMetrics() {
