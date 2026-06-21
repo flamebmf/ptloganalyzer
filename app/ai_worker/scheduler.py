@@ -148,6 +148,13 @@ class Scheduler:
                         log.info("summary_toggle_changed", key=key, value=db_val)
                         changed = True
 
+            # AI language from DB
+            lang = await self.db.get_setting("ai_language")
+            if lang and lang != getattr(self.cfg, "ai_language", None):
+                self.cfg.ai_language = lang
+                log.info("config_language_changed", lang=lang)
+                changed = True
+
             # Provider URLs from DB
             url_map = {"ollama_url": "ollama_base_url",
                        "openai_url": "openai_base_url",
