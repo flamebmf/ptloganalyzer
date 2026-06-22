@@ -532,7 +532,8 @@ function loadAppPanels(appId) {
   if (!panels) return false;
 
   var container = document.getElementById('zmstatContent');
-  var bars = panels.filter(function(p) { return p.type !== 'list'; });
+  var bars = panels.filter(function(p) { return p.type !== 'list' && p.type !== 'line'; });
+  var lines = panels.filter(function(p) { return p.type === 'line'; });
   var lists = panels.filter(function(p) { return p.type === 'list'; });
 
   var html = '';
@@ -542,6 +543,11 @@ function loadAppPanels(appId) {
     if (bars[i + 1]) html += _panelBarHtml(bars[i + 1]);
     html += '</div>';
   }
+  lines.forEach(function(p) {
+    html += '<div class="chart-card" style="padding:8px;margin-bottom:10px">'
+      + '<div style="font-size:.72rem;color:var(--pt-muted);margin-bottom:4px">' + p.title + '</div>'
+      + '<div id="' + p.id + '" style="height:140px"></div></div>';
+  });
   lists.forEach(function(p) {
     html += '<div class="chart-card" style="padding:8px;overflow:hidden;margin-bottom:10px">'
       + '<div style="font-size:.72rem;color:var(--pt-muted);margin-bottom:4px">' + p.title + '</div>'
@@ -551,6 +557,9 @@ function loadAppPanels(appId) {
 
   bars.forEach(function(p) {
     renderAppBar(p.id, appId, p.dim, p.metric, p.unit, p.filter);
+  });
+  lines.forEach(function(p) {
+    renderAppLine(p.id, appId, p.field, p.unit);
   });
   lists.forEach(function(p) {
     renderAppList(p.id, appId, p.dim, p.limit);
@@ -586,6 +595,34 @@ async function renderAppBar(elId, appId, dim, metric, unit, filter) {
       yaxis: { labels: { style: { colors: '#e4e8ee', fontSize: '10px' }, maxWidth: 150 } },
       legend: { show: false },
       tooltip: { theme: 'dark' }
+    });
+    _appMetricCharts[elId].render();
+  } catch(err) {}
+}
+
+async function renderAppLine(elId, appId, field, unit) {
+  if (!field) return;
+  try {
+    var data = await apiGet('/api/app-metrics/field-series?device_id=' + deviceId + '&app_id=' + appId + '&field=' + field + '&hours=24');
+    var items = data.items || [];
+    if (items.length === 0) return;
+    var series = [{
+      name: unit || field,
+      data: items.map(function(r) { return { x: new Date(r.ts).getTime(), y: r.value }; })
+    }];
+    _appMetricCharts[elId] = new ApexCharts(document.getElementById(elId), {
+      ...ptChartTheme,
+      chart: { type: 'area', toolbar: { show: false }, background: 'transparent',
+               foreColor: '#7a8294', fontFamily: 'Roboto', height: 140, sparkline: { enabled: true } },
+      series: series,
+      colors: ['#00d4ff'],
+      stroke: { curve: 'smooth', width: 1.5 },
+      fill: { type: 'gradient', gradient: { shadeIntensity: 0.3, opacityFrom: 0.3, opacityTo: 0 } },
+      dataLabels: { enabled: false },
+      xaxis: { type: 'datetime', labels: { show: false }, axisBorder: { show: false }, axisTicks: { show: false } },
+      yaxis: { labels: { show: false } },
+      grid: { show: false },
+      tooltip: { theme: 'dark', x: { format: 'dd MMM HH:mm' } }
     });
     _appMetricCharts[elId].render();
   } catch(err) {}

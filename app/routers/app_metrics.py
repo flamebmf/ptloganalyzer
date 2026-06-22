@@ -150,3 +150,26 @@ async def get_app_stats(
         device_id, app_id, str(hours), limit, *filter_args,
     )
     return {"items": [dict(r) for r in rows], "dim": dim}
+
+
+@router.get("/app-metrics/field-series")
+async def get_field_series(
+    device_id: int = Query(...),
+    app_id: str = Query(...),
+    field: str = Query(...),
+    hours: int = Query(24, ge=1, le=168),
+    bucket: str = Query("5 minutes", regex=r"^\d+ (minute|hour|day)s?$"),
+    agg: str = Query("avg", regex=r"^(avg|max|min|sum)$"),
+):
+    """Time-series of a numeric JSONB field aggregated into time buckets."""
+    rows = await db.fetch(
+        f"SELECT date_trunc('{bucket}', ts) AS bucket, "
+        f"ROUND({agg}(NULLIF(TRIM((fields->>'{field}')::text), ''))::numeric, 2) AS value "
+        "FROM app_metrics "
+        "WHERE device_id = $1 AND app_id = $2 "
+        "AND ts > NOW() - ($3 || ' hours')::INTERVAL "
+        f"AND (fields->>'{field}')::text ~ '^-?\\d+\\.?\\d*$' "
+        "GROUP BY bucket ORDER BY bucket",
+        device_id, app_id, str(hours),
+    )
+    return {"items": [{"ts": r["bucket"].isoformat(), "value": float(r["value"]) if r["value"] is not None else None} for r in rows], "field": field}
