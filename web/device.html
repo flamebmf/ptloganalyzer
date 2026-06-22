@@ -69,19 +69,19 @@
   </div>
 </div>
 
-<div class="chart-card" style="margin-top:14px" id="zmstatCard" hidden>
+<div class="chart-card" style="margin-top:14px" id="appMetricsCard" hidden>
   <div class="card-header">
-    <div class="card-title" onclick="toggleZmstat()" style="cursor:pointer">
-      <i class="bi bi-chevron-right" id="zmstatChevron"></i> <i class="bi bi-graph-up"></i> App metrics
+    <div class="card-title" onclick="toggleAppMetrics()" style="cursor:pointer">
+      <i class="bi bi-chevron-right" id="appMetricsChevron"></i> <i class="bi bi-graph-up"></i> App metrics
     </div>
     <div style="display:flex;gap:6px">
-      <select id="zmstatMetric" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:6px 10px;color:var(--pt-text);font-family:inherit;font-size:.75rem;outline:none" onchange="onZmstatPick()">
+      <select id="appMetricsSelect" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:6px 10px;color:var(--pt-text);font-family:inherit;font-size:.75rem;outline:none" onchange="onAppMetricsPick()">
         <option value="">— выберите —</option>
       </select>
-      <button class="btn btn-outline btn-sm" onclick="onZmstatPick()"><i class="bi bi-arrow-clockwise"></i></button>
+      <button class="btn btn-outline btn-sm" onclick="onAppMetricsPick()"><i class="bi bi-arrow-clockwise"></i></button>
     </div>
   </div>
-  <div id="zmstatContent" style="display:none"></div>
+  <div id="appMetricsContent" style="display:none"></div>
 </div>
 
 <div class="chart-card" style="margin-top:14px">
@@ -465,13 +465,13 @@ function carouselGo(i) {
 }
 
 var _appMetricCharts = {};
-var _zmstatConfig = null;
-var _zmstatRendered = false;
-var _zmstatFallback = null;
+var _appMetricsConfig = null;
+var _appMetricsRendered = false;
+var _appMetricsFallback = null;
 
 // App metric panel registry — populated from /api/app-manifest/<app_id> on-demand
 var APP_PANELS = {};
-var _zmstatGen = 0;
+var _appMetricsGen = 0;
 
 async function loadPanelScript(appId) {
   try {
@@ -489,10 +489,10 @@ async function initAppMetrics() {
   try {
     var data = await apiGet('/api/app-metrics/list?device_id=' + deviceId);
     var apps = data.apps || [];
-    var card = document.getElementById('zmstatCard');
+    var card = document.getElementById('appMetricsCard');
     if (apps.length === 0) { card.hidden = true; return; }
     card.hidden = false;
-    var sel = document.getElementById('zmstatMetric');
+    var sel = document.getElementById('appMetricsSelect');
     sel.innerHTML = '<option value="">— выберите —</option>'
       + apps.map(function(a) { return '<option value="' + a + '">' + a + '</option>'; }).join('');
     sel.value = apps[0];
@@ -500,63 +500,63 @@ async function initAppMetrics() {
   } catch(err) { if (card) card.hidden = true; }
 }
 
-function toggleZmstat() {
-  var el = document.getElementById('zmstatContent');
-  var ch = document.getElementById('zmstatChevron');
+function toggleAppMetrics() {
+  var el = document.getElementById('appMetricsContent');
+  var ch = document.getElementById('appMetricsChevron');
   if (!el) return;
   var show = el.style.display !== 'block';
   el.style.display = show ? 'block' : 'none';
   ch.className = show ? 'bi bi-chevron-down' : 'bi bi-chevron-right';
-  if (show && !_zmstatRendered && (_zmstatConfig || _zmstatFallback)) renderZmstatCharts();
-  if (!show) destroyZmstatCharts();
+  if (show && !_appMetricsRendered && (_appMetricsConfig || _appMetricsFallback)) renderAppMetricsCharts();
+  if (!show) destroyAppMetricsCharts();
 }
 
-function onZmstatPick() {
-  var appId = document.getElementById('zmstatMetric').value;
+function onAppMetricsPick() {
+  var appId = document.getElementById('appMetricsSelect').value;
   loadAppMetrics();
   if (!appId) return;
-  var zc = document.getElementById('zmstatContent');
-  if (zc && zc.style.display !== 'block') toggleZmstat();
+  var zc = document.getElementById('appMetricsContent');
+  if (zc && zc.style.display !== 'block') toggleAppMetrics();
 }
 
 async function loadAppMetrics() {
   if (!deviceId) return;
-  var appId = document.getElementById('zmstatMetric').value;
-  var cc = document.getElementById('zmstatContent');
+  var appId = document.getElementById('appMetricsSelect').value;
+  var cc = document.getElementById('appMetricsContent');
   if (!appId) {
-    if (cc && cc.style.display === 'block') toggleZmstat();
+    if (cc && cc.style.display === 'block') toggleAppMetrics();
     return;
   }
-  destroyZmstatCharts();
-  _zmstatConfig = null;
-  document.getElementById('zmstatContent').innerHTML = '';
+  destroyAppMetricsCharts();
+  _appMetricsConfig = null;
+  document.getElementById('appMetricsContent').innerHTML = '';
 
-  var gen = ++_zmstatGen;
+  var gen = ++_appMetricsGen;
   await loadPanelScript(appId);
-  if (gen !== _zmstatGen) return;
+  if (gen !== _appMetricsGen) return;
   if (loadAppPanels(appId)) {
-    if (cc && cc.style.display === 'block') renderZmstatCharts();
+    if (cc && cc.style.display === 'block') renderAppMetricsCharts();
     return;
   }
 
   // Generic fallback: line chart from /series for unknown apps
   try {
     var data = await apiGet('/api/app-metrics/series?device_id=' + deviceId + '&app_id=' + appId + '&hours=24');
-    if (gen !== _zmstatGen) return;
+    if (gen !== _appMetricsGen) return;
     var items = data.items || [];
-    var container = document.getElementById('zmstatContent');
+    var container = document.getElementById('appMetricsContent');
     if (items.length === 0) { container.innerHTML = '<div class="empty-state" style="padding:20px;text-align:center;color:var(--pt-muted);font-size:.85rem">No data</div>'; return; }
     var fieldNames = Object.keys(items[0].fields || {}).filter(function(f) { return f !== '_metric'; });
     var numericFields = fieldNames.filter(function(f) { return typeof items[0].fields[f] === 'number'; });
     if (numericFields.length === 0) { container.innerHTML = '<div class="empty-state" style="padding:20px;text-align:center;color:var(--pt-muted);font-size:.85rem">No numeric fields</div>'; return; }
-    container.innerHTML = '<div id="zmstatLineChart" style="height:160px"></div>';
+    container.innerHTML = '<div id="appMetricsLineChart" style="height:160px"></div>';
     var datasets = numericFields.map(function(f) {
       return { label: f, data: items.map(function(d) { return {x: new Date(d.ts).getTime(), y: d.fields[f]}; }) };
     });
-    _zmstatConfig = null;
-    _zmstatFallback = datasets;
-    _zmstatRendered = false;
-    if (cc && cc.style.display === 'block') renderZmstatCharts();
+    _appMetricsConfig = null;
+    _appMetricsFallback = datasets;
+    _appMetricsRendered = false;
+    if (cc && cc.style.display === 'block') renderAppMetricsCharts();
   } catch(err) { showToast('Error: '+err, 'error'); }
 }
 
@@ -564,7 +564,7 @@ function loadAppPanels(appId) {
   var panels = APP_PANELS[appId];
   if (!panels) return false;
 
-  var container = document.getElementById('zmstatContent');
+  var container = document.getElementById('appMetricsContent');
   var bars = panels.filter(function(p) { return p.type !== 'list' && p.type !== 'line'; });
   var lines = panels.filter(function(p) { return p.type === 'line'; });
   var lists = panels.filter(function(p) { return p.type === 'list'; });
@@ -588,19 +588,19 @@ function loadAppPanels(appId) {
   });
   container.innerHTML = html;
 
-  _zmstatConfig = { appId: appId, bars: bars, lines: lines, lists: lists };
-  _zmstatRendered = false;
+  _appMetricsConfig = { appId: appId, bars: bars, lines: lines, lists: lists };
+  _appMetricsRendered = false;
   return true;
 }
 
-function renderZmstatCharts() {
-  if (!_zmstatConfig && !_zmstatFallback) return;
-  _zmstatRendered = true;
-  if (_zmstatFallback) {
-    _appMetricCharts['main'] = createApexLineChart('zmstatLineChart', _zmstatFallback);
+function renderAppMetricsCharts() {
+  if (!_appMetricsConfig && !_appMetricsFallback) return;
+  _appMetricsRendered = true;
+  if (_appMetricsFallback) {
+    _appMetricCharts['main'] = createApexLineChart('appMetricsLineChart', _appMetricsFallback);
     return;
   }
-  var c = _zmstatConfig;
+  var c = _appMetricsConfig;
   c.bars.forEach(function(p) {
     renderAppBar(p.id, c.appId, p.dim, p.metric, p.unit, p.filter, p.hours);
   });
@@ -612,9 +612,9 @@ function renderZmstatCharts() {
   });
 }
 
-function destroyZmstatCharts() {
-  _zmstatRendered = false;
-  _zmstatFallback = null;
+function destroyAppMetricsCharts() {
+  _appMetricsRendered = false;
+  _appMetricsFallback = null;
   Object.keys(_appMetricCharts).forEach(function(k) {
     if (_appMetricCharts[k]) { _appMetricCharts[k].destroy(); delete _appMetricCharts[k]; }
   });
