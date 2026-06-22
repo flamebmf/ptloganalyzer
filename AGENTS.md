@@ -4,50 +4,69 @@
 - Always propose a plan first and get user confirmation before making code changes.
 - Do not edit files without agreement on the approach.
 
-## Project Context (as of 2026-06-20, session about to end)
+## Project Context (as of 2026-06-21, session about to end)
 
 ### Active Problems (current session)
-1. **Severity=0 (EMERGENCY) timeout** — `search_logs` with `severity=0` and `device_id=36` times out because existing `idx_syslog_device_ts(device_id, ts DESC)` scans ALL 1.7M rows for device_id to find severity matches; with zero matches in 48h window, LIMIT 20 doesn't help.
-   - Fix: added `idx_syslog_device_severity_ts ON syslog_messages(device_id, severity, ts DESC)` in `_ensure_indexes`, `SCHEMA_SQL`, and `schema.sql`
-   - User can create index manually via podman exec without restart.
+1. **Garbage AI summary output** — hourly/daily summaries contain gibberish instead of structured sections (`=== ОБЩАЯ ИНФОРМАЦИЯ ===` etc.)
+   - Root cause: `summarization_provider` not set → falls back to global `ai_provider=ollama` with `model=llama3.2:1b` (1B params, too weak for structured prompts)
+   - Fix: configure per-task provider via UI (Settings → AI → Суммаризация) or `/api/ai-config`:
+     ```bash
+     curl -X PATCH http://192.168.5.12:8000/api/ai-config \
+       -H "Content-Type: application/json" \
+       -d '{"summarization":{"provider":"routerai","model":"deepseek/deepseek-v4-pro"},"anomaly_detection":{"provider":"ollama","model":"llama3.2:1b"}}'
+     ```
+   - Anomaly detection works fine with llama3.2:1b (simple JSON output)
 
-2. **`_ensure_indexes` crash on startup** — `conn._command_timeout = 300` fails with `'PoolConnectionProxy' object has no attribute '_command_timeout'` in this asyncpg version.
-   - Fix: replaced with `timeout=300` param on each slow `conn.execute()` call (backfill, GIN indexes, big B-tree indexes)
-   - Pool `command_timeout` increased 30→60
+2. **Summarizer language mismatch** — AI language setting wasn't propagated to AI worker
+   - Fix: added `ai_language` read from DB in `_check_config()` (scheduler.py:151-156)
 
-3. **No visual feedback on logs search** — changing severity/search/filter in logs.html and device.html didn't show loading state.
-   - Fix: added `showLoading(el)` in `app.js` (uses existing `.modal-loading` / `.spinner` CSS classes)
-   - Integrated into `searchLogs()` (logs.html) and `loadDeviceLogs()` (device.html) before each fetch
+3. **`_ensure_indexes` issues** (from prev session, now fixed in code):
+   - `CREATE INDEX CONCURRENTLY IF NOT EXISTS` on partitioned table → silently failed (error caught by try/except, index never created)
+   - `pg_try_advisory_lock` — unnecessary complexity; `IF NOT EXISTS` makes concurrent CREATE safe
+   - Fix: removed advisory lock, changed to plain `CREATE INDEX IF NOT EXISTS`
+   - Also removed `pg_advisory_unlock_all()` in finally block
 
-### Changes NOT YET COMMITTED
-All edits from this session are uncommitted. Need `git add -A && git commit -m "..." && git push` before next session.
+4. **initAppMetrics crash** — `Cannot set properties of null (setting 'hidden')` when `zmstatCard` element missing
+   - Fix: added null guard `if (card) card.hidden = true` in catch block
 
-Changed files:
-- `app/database.py` — `_ensure_indexes`: removed `conn._command_timeout`, added `timeout=300` to slow execute calls; added `idx_syslog_device_severity_ts` index; command_timeout 30→60
-- `app/db/schema.sql` — added `idx_syslog_device_severity_ts`
-- `web/js/app.js` — added `showLoading(el)` function
-- `web/logs.html` — `searchLogs()`: added `showLoading()`, fixed `el`→`resultsEl`
-- `web/device.html` — `loadDeviceLogs()`: added `showLoading()`
+5. **Log row clicks** — clicking a log row in search results navigated to device page instead of opening detail modal
+   - Fix: message/time/sev cells → `openLogModal()`, host/app cells → device page
+
+### Changes COMMITTED AND PUSHED (this session)
+All pushed to master:
+- `ff1c079` — `web/logs.html`: split click behavior (message/time/sev → modal, host/app → device)
+- `dfe5fe4` — `app/database.py`: removed CONCURRENTLY + advisory lock; `web/device.html`: null guard in initAppMetrics
+- `08ad2df` — `app/ai_worker/scheduler.py`: added `ai_language` to `_check_config()` for AI worker sync
+- `58d8f61` — `app/routers/settings.py`: reverted redundant per-task fields (UI uses `/api/ai-config`)
+
+### NOT YET DEPLOYED
+Server needs `git pull && perl setup.pl --rebuild --update=all` to apply:
+- scheduler.py language sync
+- database.py index fixes (CONCURRENTLY → plain, no advisory lock)
+- device.html null guard
+- logs.html click behavior split
+
+pg_trgm GIN index will be created on next startup via `_ensure_indexes()` (~20-60 min, blocks INSERT but not SELECT).
 
 ### Known Server Issues
 - App runs in podman pod. Containers: `ptlog-app-backend`, `ptlog-collector-collector`, `ptlog-ai-ai-worker`, `ptlog-infra-postgres`
-- Current running code doesn't have the `_ensure_indexes` timeout fix → app starts but _ensure_indexes may still timeout on slow DDL
+- Current running code doesn't have the `_ensure_indexes` / language sync fixes → app works but DDL may timeout
 - `pid 1` in app container may exit on crash (need `Restart=always` or pod auto-restart)
 - Server has 65M rows in syslog_messages; index creation on new columns takes 2-10 min
 
+### Per-Task AI Provider Configuration
+- UI in Settings → AI → task rows (Суммаризация, Аномалии, Эмбеддинги)
+- Backend: `PATCH /api/ai-config` saves to `app_settings` table
+- AI worker picks up changes via `_check_config()` every 30 sec, recreates services
+- Available providers: ollama (llama3.2:1b), openai (gpt-4o-mini), routerai (deepseek/deepseek-v4-pro)
+- Recommended: summarization → routerai/deepseek, anomalies → ollama/llama3.2:1b
+
 ### Index Strategy for Log Queries
 - `idx_syslog_device_ts(device_id, ts DESC)` — fast for device log list without severity filter
-- `idx_syslog_device_severity_ts(device_id, severity, ts DESC)` — fast for device + severity filter (NEW, NOT YET CREATED ON SERVER)
+- `idx_syslog_device_severity_ts(device_id, severity, ts DESC)` — fast for device + severity filter
 - `idx_syslog_ts_desc(ts DESC)` — general 48h time-bound searches
 - `idx_syslog_app_ts(app_name, ts DESC)` — app-specific queries
-
-### How to Create Missing Index on Server (without app restart)
-```bash
-podman exec -it ptlog-infra-postgres psql -U ptlog -d ptlog -c "
-CREATE INDEX IF NOT EXISTS idx_syslog_device_severity_ts
-ON syslog_messages(device_id, severity, ts DESC);
-"
-```
+- `idx_syslog_message_trgm USING GIN (message gin_trgm_ops)` — instant ILIKE search (NOT YET CREATED on server)
 
 ### Pod/Container Names
 - `ptlog-app` (backend) — API сервер (uvicorn, порт 8000)
@@ -56,32 +75,6 @@ ON syslog_messages(device_id, severity, ts DESC);
 - `ptlog-infra` — PostgreSQL (pgvector, порт 5432)
 - `ptlog-web` — Nginx, статика (порт 80)
 - Полные имена контейнеров в podman: `ptlog-app-backend`, `ptlog-collector-collector`, `ptlog-ai-ai-worker`, `ptlog-infra-postgres`
-
-### Parse Templates
-- `parse_templates` table: built-in `default`, `rfc3164_tag`, `aruba_iap`
-- `devices.template_id` FK — задаётся в UI (settings.html)
-- Collector кеширует template по source_ip, применяет при парсинге
-- API: `GET /api/parse-templates`, `PATCH /api/devices/:id` (template_id)
-
-### Runtime Settings in DB
-- `app_settings(key, value)` — runtime-настройки в БД
-- Сидятся из config.yaml при первом деплое (только если ключа нет)
-- При PATCH /api/settings → сохраняются в БД
-- AI worker раз в 5 мин проверяет `ai_provider`, пересоздаёт сервисы без рестарта
-- `apply_overrides()` читает runtime-настройки из БД в config при старте web app
-
-### AI Provider Timeouts
-- Per-provider timeout в config.yaml: `ai.openai.timeout`, `ai.ollama.timeout`, `ai.routerai.timeout`
-- Дефолты: OpenAI 180, Ollama 600, RouterAI 180
-- Меняется без рестарта — `_check_config` подхватывает новое значение из БД и пересоздаёт сервисы
-
-### Device Page (web/device.html)
-- Аномалии: кликабельные строки открывают detail-модалку (title, severity, time, description)
-- Пагинация аномалий: 10 на страницу
-- AI-сводка: схлопнута до ~10 строк с кнопкой «Читать дальше»
-- App metrics карточка: скрыта если нет данных; fortigate — traffic+security панели
-- Графики: Volume (area chart) + Severity (donut) с заголовками
-- Header stats: компактно, числа с toLocaleString
 
 ### PostgreSQL Config (infra.kube)
 - `shared_buffers=2GB`, `effective_cache_size=6GB`, `synchronous_commit=off`
