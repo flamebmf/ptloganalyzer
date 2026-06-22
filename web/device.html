@@ -468,14 +468,11 @@ var _appMetricCharts = {};
 
 // App metric panel registry — populated from /api/app-manifest/<app_id> on-demand
 var APP_PANELS = {};
-var _panelLoading = {};
+var _zmstatGen = 0;
 
 async function loadPanelScript(appId) {
-  if (APP_PANELS[appId]) return;
-  if (_panelLoading[appId]) return;
-  _panelLoading[appId] = true;
   try {
-    var resp = await fetch('/api/app-manifest/' + appId);
+    var resp = await fetch('/api/app-manifest/' + appId + '?_=' + Date.now());
     if (!resp.ok) return;
     var manifest = await resp.json();
     if (manifest.panels && manifest.panels.length) {
@@ -522,12 +519,15 @@ async function loadAppMetrics() {
   });
   document.getElementById('zmstatContent').innerHTML = '';
 
+  var gen = ++_zmstatGen;
   await loadPanelScript(appId);
+  if (gen !== _zmstatGen) return;
   if (loadAppPanels(appId)) return;
 
   // Generic fallback: line chart from /series for unknown apps
   try {
     var data = await apiGet('/api/app-metrics/series?device_id=' + deviceId + '&app_id=' + appId + '&hours=24');
+    if (gen !== _zmstatGen) return;
     var items = data.items || [];
     var container = document.getElementById('zmstatContent');
     if (items.length === 0) { container.innerHTML = '<div class="empty-state" style="padding:20px"><p>No data</p></div>'; return; }
