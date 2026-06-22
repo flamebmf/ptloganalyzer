@@ -3,16 +3,16 @@
   "name": "Zimbra/Carbonio",
   "parser": { "type": "builtin", "name": "zimbramon" },
   "panels": [
-    { "id": "zmMetric", "title": "Metric types", "dim": "_metric", "unit": "Samples" },
-    { "id": "zmCpuUser", "title": "CPU user", "type": "line", "field": "cpu:user", "unit": "%" },
-    { "id": "zmCpuSys", "title": "CPU sys", "type": "line", "field": "cpu:sys", "unit": "%" },
-    { "id": "zmCpuIowait", "title": "CPU iowait", "type": "line", "field": "cpu:iowait", "unit": "%" },
-    { "id": "zmCpuIdle", "title": "CPU idle", "type": "line", "field": "cpu:idle", "unit": "%" },
-    { "id": "zmMemFree", "title": "Mem free", "type": "line", "field": "free", "unit": "KB" },
-    { "id": "zmMemSwpd", "title": "Swap", "type": "line", "field": "swpd", "unit": "KB" },
-    { "id": "zmDiskWrite", "title": "Disk write", "type": "line", "field": "vda:kB_wrtn/s", "unit": "KB/s" },
-    { "id": "zmDiskRead", "title": "Disk read", "type": "line", "field": "vda:kB_read/s", "unit": "KB/s" },
-    { "id": "zmFdCount", "title": "FD count", "type": "line", "field": "fd_count", "unit": "Count" },
-    { "id": "zmMtaQueue", "title": "MTA queue", "type": "line", "field": "requests", "unit": "Requests" }
+    { "id": "zmMetric", "title": "Metric types", "dim": "_metric", "unit": "Samples", "hours": 72 },
+    { "id": "zmCpuUser", "title": "CPU user", "type": "line", "field": "cpu:user", "unit": "%", "hours": 72 },
+    { "id": "zmCpuSys", "title": "CPU sys", "type": "line", "field": "cpu:sys", "unit": "%", "hours": 72 },
+    { "id": "zmCpuIowait", "title": "CPU iowait", "type": "line", "field": "cpu:iowait", "unit": "%", "hours": 72 },
+    { "id": "zmCpuIdle", "title": "CPU idle", "type": "line", "field": "cpu:idle", "unit": "%", "hours": 72 },
+    { "id": "zmMemFree", "title": "Mem free", "type": "line", "field": "free", "unit": "KB", "hours": 72 },
+    { "id": "zmMemSwpd", "title": "Swap", "type": "line", "field": "swpd", "unit": "KB", "hours": 72 },
+    { "id": "zmDiskWrite", "title": "Disk write", "type": "line", "field": "vda:kB_wrtn/s", "unit": "KB/s", "hours": 72 },
+    { "id": "zmDiskRead", "title": "Disk read", "type": "line", "field": "vda:kB_read/s", "unit": "KB/s", "hours": 72 },
+    { "id": "zmFdCount", "title": "FD count", "type": "line", "field": "fd_count", "unit": "Count", "hours": 72 },
+    { "id": "zmMtaQueue", "title": "MTA queue", "type": "line", "field": "requests", "unit": "Requests", "hours": 72 }
   ]
 }

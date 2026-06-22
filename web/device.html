@@ -556,13 +556,13 @@ function loadAppPanels(appId) {
   container.innerHTML = html;
 
   bars.forEach(function(p) {
-    renderAppBar(p.id, appId, p.dim, p.metric, p.unit, p.filter);
+    renderAppBar(p.id, appId, p.dim, p.metric, p.unit, p.filter, p.hours);
   });
   lines.forEach(function(p) {
-    renderAppLine(p.id, appId, p.field, p.unit, p.agg);
+    renderAppLine(p.id, appId, p.field, p.unit, p.agg, p.hours);
   });
   lists.forEach(function(p) {
-    renderAppList(p.id, appId, p.dim, p.limit);
+    renderAppList(p.id, appId, p.dim, p.limit, p.hours);
   });
   return true;
 }
@@ -573,8 +573,8 @@ function _panelBarHtml(p) {
     + '<div id="' + p.id + '" style="height:120px"></div></div>';
 }
 
-async function renderAppBar(elId, appId, dim, metric, unit, filter) {
-  var url = '/api/app-metrics/stats?device_id=' + deviceId + '&app_id=' + appId + '&dim=' + dim + '&hours=24&limit=8';
+async function renderAppBar(elId, appId, dim, metric, unit, filter, hours) {
+  var url = '/api/app-metrics/stats?device_id=' + deviceId + '&app_id=' + appId + '&dim=' + dim + '&hours=' + (hours || 24) + '&limit=8';
   if (metric) url += '&metric=' + metric;
   if (filter) url += '&filter=' + encodeURIComponent(filter);
   try {
@@ -600,10 +600,10 @@ async function renderAppBar(elId, appId, dim, metric, unit, filter) {
   } catch(err) {}
 }
 
-async function renderAppLine(elId, appId, field, unit, agg) {
+async function renderAppLine(elId, appId, field, unit, agg, hours) {
   if (!field) return;
   try {
-    var url = '/api/app-metrics/field-series?device_id=' + deviceId + '&app_id=' + appId + '&field=' + field + '&hours=24';
+    var url = '/api/app-metrics/field-series?device_id=' + deviceId + '&app_id=' + appId + '&field=' + field + '&hours=' + (hours || 24);
     if (agg) url += '&agg=' + agg;
     var data = await apiGet(url);
     var items = data.items || [];
@@ -630,9 +630,9 @@ async function renderAppLine(elId, appId, field, unit, agg) {
   } catch(err) {}
 }
 
-async function renderAppList(elId, appId, dim, limit) {
+async function renderAppList(elId, appId, dim, limit, hours) {
   try {
-    var data = await apiGet('/api/app-metrics/stats?device_id=' + deviceId + '&app_id=' + appId + '&dim=' + dim + '&hours=24&limit=' + (limit || 20));
+    var data = await apiGet('/api/app-metrics/stats?device_id=' + deviceId + '&app_id=' + appId + '&dim=' + dim + '&hours=' + (hours || 24) + '&limit=' + (limit || 20));
     var items = data.items || [];
     var el = document.getElementById(elId);
     if (!el || items.length === 0) return;
