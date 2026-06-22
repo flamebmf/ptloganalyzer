@@ -108,28 +108,28 @@ def parse_postfix(message: str) -> tuple[str, dict] | None:
         return None
     process = m.group(1)
     detail = m.group(2)
-    fields = {"_process": process}
+    fields = {"process": process}
 
     cm = _POSTFIX_CONNECT_RE.search(detail)
     if cm:
         fields["event"] = "connect"
-        fields["src_ip"] = cm.group(1)
-        fields["src_port"] = int(cm.group(2))
-        fields["dst_ip"] = cm.group(3)
-        fields["dst_port"] = int(cm.group(4))
+        fields["srcip"] = cm.group(1)
+        fields["srcport"] = int(cm.group(2))
+        fields["dstip"] = cm.group(3)
+        fields["dstport"] = int(cm.group(4))
         return ("postfix", fields)
 
     sim = _POSTFIX_SINGLE_IP_RE.search(detail)
     if sim:
         fields["event"] = "allowlist" if "ALLOWLISTED" in detail else "pass_old"
-        fields["peer_ip"] = sim.group(1)
-        fields["peer_port"] = int(sim.group(2))
+        fields["peerip"] = sim.group(1)
+        fields["peerport"] = int(sim.group(2))
         return ("postfix", fields)
 
     clm = _POSTFIX_CLIENT_RE.search(detail)
     if clm:
-        fields["host"] = clm.group(1)
-        fields["peer_ip"] = clm.group(2)
+        fields["hostname"] = clm.group(1)
+        fields["peerip"] = clm.group(2)
         if "connect" in detail:
             fields["event"] = "smtp_connect"
         elif "disconnect" in detail:
@@ -142,8 +142,8 @@ def parse_postfix(message: str) -> tuple[str, dict] | None:
         fields["event"] = "noqueue"
         clm2 = _POSTFIX_CLIENT_RE.search(detail)
         if clm2:
-            fields["host"] = clm2.group(1)
-            fields["peer_ip"] = clm2.group(2)
+            fields["hostname"] = clm2.group(1)
+            fields["peerip"] = clm2.group(2)
         return ("postfix", fields)
 
     return None

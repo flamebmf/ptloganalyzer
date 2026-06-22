@@ -1,6 +1,13 @@
 {
   "app_id": "postfix",
-  "name": "Postfix mail logs",
+  "name": "Postfix",
   "parser": { "type": "builtin", "name": "postfix" },
-  "panels": []
+  "panels": [
+    { "id": "pfxEvent", "title": "Events", "dim": "event", "unit": "Count" },
+    { "id": "pfxProcess", "title": "Process", "dim": "process", "unit": "Count" },
+    { "id": "pfxSrcIp", "title": "Source IPs", "dim": "srcip", "unit": "Connections" },
+    { "id": "pfxPeerIp", "title": "External IPs", "dim": "peerip", "unit": "Connections" },
+    { "id": "pfxHostname", "title": "Hostnames", "dim": "hostname", "unit": "Connections" },
+    { "id": "pfxDstIp", "title": "Dest IPs", "dim": "dstip", "unit": "Connections" }
+  ]
 }

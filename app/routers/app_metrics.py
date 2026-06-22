@@ -109,7 +109,8 @@ async def get_app_stats(
     valid = {"srcip", "dstip", "srcintf", "dstintf", "app", "policy", "action", "service",
              "policyname", "appcat", "srcport", "dstport", "proto", "osname", "type", "subtype",
              "attack", "severity", "eventtype", "direction", "crlevel", "hostname", "url",
-             "srccountry", "dstcountry", "httpmethod", "agent", "msg", "profile", "ref"}
+             "srccountry", "dstcountry", "httpmethod", "agent", "msg", "profile", "ref",
+             "process", "event", "peerip", "peerport"}
     if dim not in valid:
         raise HTTPException(400, f"Invalid dim: {dim}. Valid: {', '.join(sorted(valid))}")
 
