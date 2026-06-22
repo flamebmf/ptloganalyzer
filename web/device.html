@@ -496,7 +496,6 @@ async function initAppMetrics() {
     sel.innerHTML = '<option value="">— выберите —</option>'
       + apps.map(function(a) { return '<option value="' + a + '">' + a + '</option>'; }).join('');
     sel.value = apps[0];
-    loadAppMetrics();
   } catch(err) { if (card) card.hidden = true; }
 }
 
@@ -512,9 +511,12 @@ function toggleZmstat() {
 async function loadAppMetrics() {
   if (!deviceId) return;
   var appId = document.getElementById('zmstatMetric').value;
-  if (!appId) return;
-  var cc = document.getElementById('zmstatContent');
-  if (cc && cc.style.display !== 'block') { toggleZmstat(); }
+  if (!appId) {
+    var cc = document.getElementById('zmstatContent');
+    if (cc && cc.style.display === 'block') toggleZmstat();
+    return;
+  }
+  if (cc && cc.style.display !== 'block') toggleZmstat();
   Object.keys(_appMetricCharts).forEach(function(k) {
     if (_appMetricCharts[k]) { _appMetricCharts[k].destroy(); delete _appMetricCharts[k]; }
   });
