@@ -71,7 +71,9 @@
 
 <div class="chart-card" style="margin-top:14px" id="zmstatCard" hidden>
   <div class="card-header">
-    <div class="card-title"><i class="bi bi-graph-up"></i> App metrics</div>
+    <div class="card-title" onclick="toggleZmstat()" style="cursor:pointer">
+      <i class="bi bi-chevron-right" id="zmstatChevron"></i> <i class="bi bi-graph-up"></i> App metrics
+    </div>
     <div style="display:flex;gap:6px">
       <select id="zmstatMetric" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:6px 10px;color:var(--pt-text);font-family:inherit;font-size:.75rem;outline:none" onchange="loadAppMetrics()">
         <option value="">— выберите —</option>
@@ -79,7 +81,7 @@
       <button class="btn btn-outline btn-sm" onclick="loadAppMetrics()"><i class="bi bi-arrow-clockwise"></i></button>
     </div>
   </div>
-  <div id="zmstatContent"></div>
+  <div id="zmstatContent" style="display:none"></div>
 </div>
 
 <div class="chart-card" style="margin-top:14px">
@@ -498,10 +500,21 @@ async function initAppMetrics() {
   } catch(err) { if (card) card.hidden = true; }
 }
 
+function toggleZmstat() {
+  var el = document.getElementById('zmstatContent');
+  var ch = document.getElementById('zmstatChevron');
+  if (!el) return;
+  var show = el.style.display !== 'block';
+  el.style.display = show ? 'block' : 'none';
+  ch.className = show ? 'bi bi-chevron-down' : 'bi bi-chevron-right';
+}
+
 async function loadAppMetrics() {
   if (!deviceId) return;
   var appId = document.getElementById('zmstatMetric').value;
   if (!appId) return;
+  var cc = document.getElementById('zmstatContent');
+  if (cc && cc.style.display !== 'block') { toggleZmstat(); }
   Object.keys(_appMetricCharts).forEach(function(k) {
     if (_appMetricCharts[k]) { _appMetricCharts[k].destroy(); delete _appMetricCharts[k]; }
   });
