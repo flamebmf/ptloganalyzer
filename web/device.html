@@ -559,7 +559,7 @@ function loadAppPanels(appId) {
     renderAppBar(p.id, appId, p.dim, p.metric, p.unit, p.filter);
   });
   lines.forEach(function(p) {
-    renderAppLine(p.id, appId, p.field, p.unit);
+    renderAppLine(p.id, appId, p.field, p.unit, p.agg);
   });
   lists.forEach(function(p) {
     renderAppList(p.id, appId, p.dim, p.limit);
@@ -600,10 +600,12 @@ async function renderAppBar(elId, appId, dim, metric, unit, filter) {
   } catch(err) {}
 }
 
-async function renderAppLine(elId, appId, field, unit) {
+async function renderAppLine(elId, appId, field, unit, agg) {
   if (!field) return;
   try {
-    var data = await apiGet('/api/app-metrics/field-series?device_id=' + deviceId + '&app_id=' + appId + '&field=' + field + '&hours=24');
+    var url = '/api/app-metrics/field-series?device_id=' + deviceId + '&app_id=' + appId + '&field=' + field + '&hours=24';
+    if (agg) url += '&agg=' + agg;
+    var data = await apiGet(url);
     var items = data.items || [];
     if (items.length === 0) return;
     var series = [{
