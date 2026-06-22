@@ -110,7 +110,7 @@ async def get_app_stats(
              "policyname", "appcat", "srcport", "dstport", "proto", "osname", "type", "subtype",
              "attack", "severity", "eventtype", "direction", "crlevel", "hostname", "url",
              "srccountry", "dstcountry", "httpmethod", "agent", "msg", "profile", "ref",
-             "process", "event", "peerip", "peerport"}
+             "process", "event", "peerip", "peerport", "_metric"}
     if dim not in valid:
         raise HTTPException(400, f"Invalid dim: {dim}. Valid: {', '.join(sorted(valid))}")
 

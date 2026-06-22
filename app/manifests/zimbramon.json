@@ -1,6 +1,8 @@
 {
   "app_id": "zimbramon",
-  "name": "Zimbra zmstat",
+  "name": "Zimbra/Carbonio",
   "parser": { "type": "builtin", "name": "zimbramon" },
-  "panels": []
+  "panels": [
+    { "id": "zmMetric", "title": "Metric types", "dim": "_metric", "unit": "Samples" }
+  ]
 }
