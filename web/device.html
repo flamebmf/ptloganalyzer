@@ -75,10 +75,10 @@
       <i class="bi bi-chevron-right" id="zmstatChevron"></i> <i class="bi bi-graph-up"></i> App metrics
     </div>
     <div style="display:flex;gap:6px">
-      <select id="zmstatMetric" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:6px 10px;color:var(--pt-text);font-family:inherit;font-size:.75rem;outline:none" onchange="loadAppMetrics()">
+      <select id="zmstatMetric" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:6px 10px;color:var(--pt-text);font-family:inherit;font-size:.75rem;outline:none" onchange="onZmstatPick()">
         <option value="">— выберите —</option>
       </select>
-      <button class="btn btn-outline btn-sm" onclick="loadAppMetrics()"><i class="bi bi-arrow-clockwise"></i></button>
+      <button class="btn btn-outline btn-sm" onclick="onZmstatPick()"><i class="bi bi-arrow-clockwise"></i></button>
     </div>
   </div>
   <div id="zmstatContent" style="display:none"></div>
@@ -465,6 +465,9 @@ function carouselGo(i) {
 }
 
 var _appMetricCharts = {};
+var _zmstatConfig = null;
+var _zmstatRendered = false;
+var _zmstatFallback = null;
 
 // App metric panel registry — populated from /api/app-manifest/<app_id> on-demand
 var APP_PANELS = {};
@@ -493,6 +496,7 @@ async function initAppMetrics() {
     sel.innerHTML = '<option value="">— выберите —</option>'
       + apps.map(function(a) { return '<option value="' + a + '">' + a + '</option>'; }).join('');
     sel.value = apps[0];
+    loadAppMetrics();
   } catch(err) { if (card) card.hidden = true; }
 }
 
@@ -503,6 +507,16 @@ function toggleZmstat() {
   var show = el.style.display !== 'block';
   el.style.display = show ? 'block' : 'none';
   ch.className = show ? 'bi bi-chevron-down' : 'bi bi-chevron-right';
+  if (show && !_zmstatRendered && (_zmstatConfig || _zmstatFallback)) renderZmstatCharts();
+  if (!show) destroyZmstatCharts();
+}
+
+function onZmstatPick() {
+  var appId = document.getElementById('zmstatMetric').value;
+  loadAppMetrics();
+  if (!appId) return;
+  var zc = document.getElementById('zmstatContent');
+  if (zc && zc.style.display !== 'block') toggleZmstat();
 }
 
 async function loadAppMetrics() {
@@ -513,16 +527,17 @@ async function loadAppMetrics() {
     if (cc && cc.style.display === 'block') toggleZmstat();
     return;
   }
-  if (cc && cc.style.display !== 'block') toggleZmstat();
-  Object.keys(_appMetricCharts).forEach(function(k) {
-    if (_appMetricCharts[k]) { _appMetricCharts[k].destroy(); delete _appMetricCharts[k]; }
-  });
+  destroyZmstatCharts();
+  _zmstatConfig = null;
   document.getElementById('zmstatContent').innerHTML = '';
 
   var gen = ++_zmstatGen;
   await loadPanelScript(appId);
   if (gen !== _zmstatGen) return;
-  if (loadAppPanels(appId)) return;
+  if (loadAppPanels(appId)) {
+    if (cc && cc.style.display === 'block') renderZmstatCharts();
+    return;
+  }
 
   // Generic fallback: line chart from /series for unknown apps
   try {
@@ -530,15 +545,18 @@ async function loadAppMetrics() {
     if (gen !== _zmstatGen) return;
     var items = data.items || [];
     var container = document.getElementById('zmstatContent');
-    if (items.length === 0) { container.innerHTML = '<div class="empty-state" style="padding:20px"><p>No data</p></div>'; return; }
+    if (items.length === 0) { container.innerHTML = '<div class="empty-state" style="padding:20px;text-align:center;color:var(--pt-muted);font-size:.85rem">No data</div>'; return; }
     var fieldNames = Object.keys(items[0].fields || {}).filter(function(f) { return f !== '_metric'; });
     var numericFields = fieldNames.filter(function(f) { return typeof items[0].fields[f] === 'number'; });
-    if (numericFields.length === 0) { container.innerHTML = '<div class="empty-state" style="padding:20px"><p>No numeric fields</p></div>'; return; }
+    if (numericFields.length === 0) { container.innerHTML = '<div class="empty-state" style="padding:20px;text-align:center;color:var(--pt-muted);font-size:.85rem">No numeric fields</div>'; return; }
     container.innerHTML = '<div id="zmstatLineChart" style="height:160px"></div>';
     var datasets = numericFields.map(function(f) {
       return { label: f, data: items.map(function(d) { return {x: new Date(d.ts).getTime(), y: d.fields[f]}; }) };
     });
-    _appMetricCharts['main'] = createApexLineChart('zmstatLineChart', datasets);
+    _zmstatConfig = null;
+    _zmstatFallback = datasets;
+    _zmstatRendered = false;
+    if (cc && cc.style.display === 'block') renderZmstatCharts();
   } catch(err) { showToast('Error: '+err, 'error'); }
 }
 
@@ -570,16 +588,36 @@ function loadAppPanels(appId) {
   });
   container.innerHTML = html;
 
-  bars.forEach(function(p) {
-    renderAppBar(p.id, appId, p.dim, p.metric, p.unit, p.filter, p.hours);
-  });
-  lines.forEach(function(p) {
-    renderAppLine(p.id, appId, p.field, p.unit, p.agg, p.hours);
-  });
-  lists.forEach(function(p) {
-    renderAppList(p.id, appId, p.dim, p.limit, p.hours);
-  });
+  _zmstatConfig = { appId: appId, bars: bars, lines: lines, lists: lists };
+  _zmstatRendered = false;
   return true;
+}
+
+function renderZmstatCharts() {
+  if (!_zmstatConfig && !_zmstatFallback) return;
+  _zmstatRendered = true;
+  if (_zmstatFallback) {
+    _appMetricCharts['main'] = createApexLineChart('zmstatLineChart', _zmstatFallback);
+    return;
+  }
+  var c = _zmstatConfig;
+  c.bars.forEach(function(p) {
+    renderAppBar(p.id, c.appId, p.dim, p.metric, p.unit, p.filter, p.hours);
+  });
+  c.lines.forEach(function(p) {
+    renderAppLine(p.id, c.appId, p.field, p.unit, p.agg, p.hours);
+  });
+  c.lists.forEach(function(p) {
+    renderAppList(p.id, c.appId, p.dim, p.limit, p.hours);
+  });
+}
+
+function destroyZmstatCharts() {
+  _zmstatRendered = false;
+  _zmstatFallback = null;
+  Object.keys(_appMetricCharts).forEach(function(k) {
+    if (_appMetricCharts[k]) { _appMetricCharts[k].destroy(); delete _appMetricCharts[k]; }
+  });
 }
 
 function _panelBarHtml(p) {
