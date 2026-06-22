@@ -162,7 +162,7 @@ async def get_field_series(
     app_id: str = Query(...),
     field: str = Query(...),
     hours: int = Query(24, ge=1, le=168),
-    bucket: str = Query("5 minutes", regex=r"^\d+ (minute|hour|day)s?$"),
+    bucket: str = Query("hour", regex=r"^(hour|day)$"),
     agg: str = Query("avg", regex=r"^(avg|max|min|sum)$"),
 ):
     """Time-series of a numeric JSONB field aggregated into time buckets."""
@@ -170,13 +170,13 @@ async def get_field_series(
         raise HTTPException(400, f"Invalid field name: {field}")
     numeric_re = "^[-]?[0-9]+[.]?[0-9]*$"
     rows = await db.fetch(
-        f"SELECT date_trunc('{bucket}', ts) AS bucket, "
-        f"ROUND({agg}(NULLIF(TRIM((fields->>'{field}')::text), ''))::numeric, 2) AS value "
+        "SELECT date_trunc($4, ts) AS bucket, "
+        f"ROUND({agg}(NULLIF(TRIM((fields->>'{field}')::text), '')::numeric), 2) AS value "
         "FROM app_metrics "
         "WHERE device_id = $1 AND app_id = $2 "
         "AND ts > NOW() - ($3 || ' hours')::INTERVAL "
         f"AND (fields->>'{field}')::text ~ '{numeric_re}' "
         "GROUP BY bucket ORDER BY bucket",
-        device_id, app_id, str(hours),
+        device_id, app_id, str(hours), bucket,
     )
     return {"items": [{"ts": r["bucket"].isoformat(), "value": float(r["value"]) if r["value"] is not None else None} for r in rows], "field": field}
