@@ -511,8 +511,8 @@ function toggleZmstat() {
 async function loadAppMetrics() {
   if (!deviceId) return;
   var appId = document.getElementById('zmstatMetric').value;
+  var cc = document.getElementById('zmstatContent');
   if (!appId) {
-    var cc = document.getElementById('zmstatContent');
     if (cc && cc.style.display === 'block') toggleZmstat();
     return;
   }

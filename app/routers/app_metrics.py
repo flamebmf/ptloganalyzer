@@ -162,8 +162,8 @@ async def get_field_series(
     app_id: str = Query(...),
     field: str = Query(...),
     hours: int = Query(24, ge=1, le=168),
-    bucket: str = Query("hour", regex=r"^(hour|day)$"),
-    agg: str = Query("avg", regex=r"^(avg|max|min|sum)$"),
+    bucket: str = Query("hour", pattern=r"^(hour|day)$"),
+    agg: str = Query("avg", pattern=r"^(avg|max|min|sum)$"),
 ):
     """Time-series of a numeric JSONB field aggregated into time buckets."""
     if not _FIELD_RE.match(field):
