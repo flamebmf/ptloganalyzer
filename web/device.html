@@ -616,7 +616,7 @@ function destroyAppMetricsCharts() {
   _appMetricsRendered = false;
   _appMetricsFallback = null;
   Object.keys(_appMetricCharts).forEach(function(k) {
-    if (_appMetricCharts[k]) { _appMetricCharts[k].destroy(); delete _appMetricCharts[k]; }
+    if (_appMetricCharts[k]) { try { _appMetricCharts[k].destroy(); } catch(e) {} delete _appMetricCharts[k]; }
   });
 }
 
@@ -634,9 +634,11 @@ async function renderAppBar(elId, appId, dim, metric, unit, filter, hours) {
     var data = await apiGet(url);
     var items = data.items || [];
     if (items.length === 0) return;
+    var el = document.getElementById(elId);
+    if (!el) return;
     var labels = items.map(function(r) { return String(r.label||'').substring(0,25); });
     var values = items.map(function(r) { return r.value || r.sessions; });
-    _appMetricCharts[elId] = new ApexCharts(document.getElementById(elId), {
+    _appMetricCharts[elId] = new ApexCharts(el, {
       ...ptChartTheme,
       chart: { type: 'bar', toolbar: { show: false }, background: 'transparent',
                foreColor: '#7a8294', fontFamily: 'Roboto', height: 150 },
@@ -661,11 +663,13 @@ async function renderAppLine(elId, appId, field, unit, agg, hours) {
     var data = await apiGet(url);
     var items = data.items || [];
     if (items.length === 0) return;
+    var el = document.getElementById(elId);
+    if (!el) return;
     var series = [{
       name: unit || field,
       data: items.map(function(r) { return { x: new Date(r.ts).getTime(), y: r.value }; })
     }];
-    _appMetricCharts[elId] = new ApexCharts(document.getElementById(elId), {
+    _appMetricCharts[elId] = new ApexCharts(el, {
       ...ptChartTheme,
       chart: { type: 'area', toolbar: { show: false }, background: 'transparent',
                foreColor: '#7a8294', fontFamily: 'Roboto', height: 140, sparkline: { enabled: true } },
