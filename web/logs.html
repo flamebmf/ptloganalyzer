@@ -111,6 +111,17 @@ async function searchLogs(page) {
     var data = await apiGet(url);
     _logTotal = data.total || data.items.length;
     if (data.items.length === 0) {
+      var hrs = parseInt(document.getElementById('hoursFilter').value);
+      if (hrs > 0) {
+        url = url.replace(/hours=\d+/, 'hours=0');
+        data = await apiGet(url);
+        if (data.items.length > 0) {
+          _logTotal = data.total || data.items.length;
+          resultsEl.innerHTML = '<div style="padding:6px 0;font-size:.75rem;color:var(--pt-accent)">В выбранном периоде не найдено. Показаны результаты за всё время:</div>';
+        }
+      }
+    }
+    if (data.items.length === 0) {
       resultsEl.innerHTML = '<div class="empty-state"><div class="icon"><i class="bi bi-search"></i></div><p data-i18n="no_data">Нет результатов</p></div>';
       document.getElementById('pagination').innerHTML = '';
       return;

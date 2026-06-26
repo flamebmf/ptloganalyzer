@@ -116,6 +116,7 @@ var sevChart = null;
 var _allLogs = [];
 var _logsExpanded = false;
 var _semanticMode = false;
+var _globalSearchHint = '';
 var _anomalyPage = 0;
 var _anomalyPageSize = 10;
 var _anomalyTotal = 0;
@@ -206,7 +207,8 @@ function renderLogList(semantic) {
   }
 
   var show = semantic || _logsExpanded ? _allLogs : _allLogs.slice(0, 3);
-  list.innerHTML = show.map(function(l) {
+  var hint = _globalSearchHint || '';
+  list.innerHTML = hint + show.map(function(l) {
     var scoreHtml = l.score ? ' <span style="color:var(--pt-muted);font-size:.72rem">(' + (l.score*100).toFixed(0) + '%)</span>' : '';
     return '<div class="log-line" onclick="openLogModal(' + l.id + ',' + deviceId + ')" style="cursor:pointer">'
       + '<span class="ts">' + formatTime(l.ts) + '</span>'
@@ -272,6 +274,18 @@ async function loadDeviceLogs() {
   showLoading(listEl);
   try {
     var data = await apiGet(url);
+    if (data.items.length === 0) {
+      var hrs = parseInt(document.getElementById('hoursFilter').value);
+      if (hrs > 0) {
+        url = url.replace(/hours=\d+/, 'hours=0');
+        data = await apiGet(url);
+        if (data.items.length > 0) {
+          _globalSearchHint = '<div style="padding:6px 0;font-size:.75rem;color:var(--pt-accent)">В выбранном периоде не найдено. Показаны результаты за всё время:</div>';
+        }
+      }
+    } else {
+      _globalSearchHint = '';
+    }
     renderLogs(data);
   } catch(err) { showToast('Error: '+err, 'error'); }
 }
