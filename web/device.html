@@ -95,6 +95,14 @@
   <div class="search-bar">
     <input type="text" id="logSearch" placeholder="Поиск..." onkeyup="if(event.key==='Enter')loadDeviceLogs()">
     <div id="sevFilter"></div>
+    <select id="hoursFilter" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:6px 10px;color:var(--pt-text);font-family:inherit;font-size:.75rem;outline:none">
+      <option value="6">6ч</option>
+      <option value="24">24ч</option>
+      <option value="48" selected>48ч</option>
+      <option value="168">7д</option>
+      <option value="720">30д</option>
+      <option value="0">Всё</option>
+    </select>
     <button class="btn btn-outline btn-sm" id="semanticToggle" onclick="toggleSemantic()" title="Семантический поиск"><i class="bi bi-stars"></i></button>
     <button class="btn btn-primary btn-sm" onclick="loadDeviceLogs()"><i class="bi bi-search"></i></button>
   </div>
@@ -258,6 +266,8 @@ async function loadDeviceLogs() {
   var url = '/api/logs?device_id=' + deviceId + '&limit=20';
   if (query) url += '&query=' + encodeURIComponent(query);
   if (sev) url += '&severity=' + sev;
+  var hours = parseInt(document.getElementById('hoursFilter').value);
+  if (hours > 0) url += '&hours=' + hours;
 
   showLoading(listEl);
   try {

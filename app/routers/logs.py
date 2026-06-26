@@ -39,6 +39,7 @@ async def search_logs(
     severity: int | None = None,
     facility: int | None = None,
     query: str | None = None,
+    hours: int = Query(48, ge=0, le=720),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
 ):
@@ -47,6 +48,7 @@ async def search_logs(
         severity=severity,
         facility=facility,
         query=query,
+        hours=hours,
         limit=limit,
         offset=offset,
     )

@@ -563,6 +563,7 @@ class Database:
                            severity: int | None = None,
                            facility: int | None = None,
                            query: str | None = None,
+                           hours: int = 48,
                            limit: int = 100, offset: int = 0):
         where = []
         args = []
@@ -575,20 +576,26 @@ class Database:
             where.append(f"facility = ${i}"); args.append(facility); i += 1
         if query:
             where.append(f"message ILIKE ${i}"); args.append(f"%{query}%"); i += 1
-        # Always bound by time to avoid full table scan
-        where.append(f"ts > NOW() - INTERVAL '48 hours'")
+        if hours > 0:
+            where.append(f"ts > NOW() - ${i} * INTERVAL '1 hour'")
+            args.append(hours); i += 1
         where_sql = " AND ".join(where) if where else "TRUE"
 
         # Use log_stats_hourly for count when no full-text search
         if not query:
-            count_parts = [f"hour > NOW() - INTERVAL '48 hours'"]
+            count_parts = []
             count_args = []
+            if hours > 0:
+                count_parts.append(f"hour > NOW() - ${len(count_args) + 1} * INTERVAL '1 hour'")
+                count_args.append(hours)
             if device_id is not None:
                 count_parts.append(f"device_id = ${len(count_args) + 1}")
                 count_args.append(device_id)
             if severity is not None:
                 count_parts.append(f"severity = ${len(count_args) + 1}")
                 count_args.append(severity)
+            if not count_parts:
+                count_parts.append("TRUE")
             total = await self.fetchval(
                 "SELECT COALESCE(SUM(count), 0) FROM log_stats_hourly WHERE "
                 + " AND ".join(count_parts), *count_args
