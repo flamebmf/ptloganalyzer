@@ -312,7 +312,7 @@ async function loadDeviceAnomalies(page) {
       return '<div class="anomaly-row" onclick="openAnomalyDetail(' + a.id + ',\'' + escJs(a.title) + '\',\'' + escJs(a.severity) + '\',\'' + escJs(a.description||'') + '\',\'' + (a.detected_at||'') + '\',\'' + (a.last_seen||'') + '\',' + (a.count||1) + ')" style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.03);align-items:center;cursor:pointer">'
         + '<span style="white-space:nowrap;font-size:.72rem;color:var(--pt-muted);min-width:75px">' + formatTime(a.detected_at) + '</span>'
         + '<span style="white-space:nowrap;font-size:.72rem;min-width:55px;display:flex;align-items:center">' + dot + (a.severity==='critical'?'Crit':'Warn') + '</span>'
-        + '<span style="flex:1;color:var(--pt-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + convertLogIds(escHtml(a.title), deviceId) + '</span>'
+        + '<span style="flex:1;color:var(--pt-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(a.title) + '</span>'
         + (a.count > 1 ? '<span class="badge badge-err" style="font-size:.65rem;flex-shrink:0">' + a.count + 'x</span>' : '')
         + '<button class="btn btn-sm btn-outline" onclick="event.stopPropagation();openRec(' + a.id + ',\'' + escJs(a.title) + '\',' + deviceId + ')" style="font-size:.65rem;padding:2px 6px;flex-shrink:0" title="Что можно сделать"><i class="bi bi-lightbulb"></i></button>'
         + '</div>';
@@ -351,7 +351,7 @@ function openAnomalyDetail(id, title, severity, description, detectedAt, lastSee
     + '</div>';
   if (description) {
     html += '<div style="font-size:.85rem;line-height:1.7;white-space:pre-wrap;word-break:break-word;padding:12px;background:rgba(255,255,255,.02);border-radius:8px;border:1px solid rgba(255,255,255,.04)">'
-      + yandexLinks(convertLogIds(escHtml(description), deviceId))
+      + yandexLinks(escHtml(description))
       + '</div>';
   } else {
     html += '<div style="color:var(--pt-muted);font-size:.85rem">Нет описания</div>';
