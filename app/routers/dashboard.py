@@ -205,6 +205,62 @@ async def dashboard_storage():
     return _storage_cache
 
 
+@router.get("/dashboard/storage/detail")
+async def storage_detail():
+    """Detailed storage breakdown by table/index/partition."""
+    table_sizes = await db.fetch("""
+        SELECT
+            relname AS name,
+            pg_size_pretty(pg_total_relation_size(relid)) AS total_pretty,
+            pg_total_relation_size(relid) AS total_bytes,
+            pg_size_pretty(pg_relation_size(relid)) AS table_pretty,
+            pg_relation_size(relid) AS table_bytes,
+            pg_size_pretty(pg_total_relation_size(relid) - pg_relation_size(relid)) AS idx_toast_pretty,
+            pg_total_relation_size(relid) - pg_relation_size(relid) AS idx_toast_bytes,
+            n_dead_tup,
+            n_live_tup,
+            CASE WHEN n_live_tup > 0
+                THEN round(100.0 * n_dead_tup / (n_dead_tup + n_live_tup), 1)
+                ELSE 0 END AS dead_pct
+        FROM (
+            SELECT
+                c.oid AS relid,
+                c.relname,
+                s.n_dead_tup,
+                s.n_live_tup
+            FROM pg_class c
+            JOIN pg_stat_user_tables s ON s.relid = c.oid
+            WHERE c.relkind = 'p' OR (c.relkind = 'r' AND c.relispartition)
+        ) t
+        ORDER BY pg_total_relation_size(relid) DESC
+    """)
+    index_sizes = await db.fetch("""
+        SELECT
+            relname AS name,
+            pg_size_pretty(pg_relation_size(relid)) AS size_pretty,
+            pg_relation_size(relid) AS size_bytes,
+            reltuples::bigint AS tuples
+        FROM pg_class
+        WHERE relkind = 'i'
+          AND relname NOT LIKE 'pg_%'
+          AND relname NOT LIKE '_%_pkey'
+        ORDER BY pg_relation_size(relid) DESC
+        LIMIT 20
+    """)
+    embed_stats = await db.fetchrow("""
+        SELECT
+            COUNT(*) AS rows,
+            pg_size_pretty(pg_total_relation_size('log_embeddings')) AS size_pretty,
+            pg_total_relation_size('log_embeddings') AS size_bytes
+        FROM log_embeddings
+    """)
+    return {
+        "tables": [dict(r) for r in table_sizes],
+        "top_indexes": [dict(r) for r in index_sizes],
+        "embeddings": dict(embed_stats) if embed_stats else None,
+    }
+
+
 @router.get("/dashboard/logtail")
 async def dashboard_logtail(limit: int = Query(20, ge=1, le=100)):
     rows = await db.fetch(
